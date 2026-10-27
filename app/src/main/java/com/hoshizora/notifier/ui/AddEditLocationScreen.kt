@@ -78,7 +78,7 @@ fun AddEditLocationScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                "緯度経度は、可能な限り少数まで正確に入力してください。"
+                "緯度・経度はGoogleマップ等の値（小数第2位〜第6位程度）をそのまま入力してください。"
             )
             OutlinedTextField(
                 value = name,
