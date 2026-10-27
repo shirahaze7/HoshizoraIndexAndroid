@@ -66,21 +66,21 @@ fun LocationListScreen(
     val scope = rememberCoroutineScope()
 
     val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
         uri?.let {
             val json = context.contentResolver.openInputStream(it)?.use { stream ->
                 stream.bufferedReader().readText()
             }
-            if (json != null) {
+            json?.let { content ->
                 viewModel.importFromJson(
-                    json = json,
+                    json = content,
                     onSuccess = {
                         Toast.makeText(context, "インポートしました", Toast.LENGTH_SHORT).show()
                     },
-                    onError = {
-                        Toast.makeText(context, "エラー: ${it.message}", Toast.LENGTH_LONG).show()
-                    }
+                    onError = { error ->
+                        Toast.makeText(context, "エラー: ${error.message}", Toast.LENGTH_LONG).show()
+                    },
                 )
             }
         }

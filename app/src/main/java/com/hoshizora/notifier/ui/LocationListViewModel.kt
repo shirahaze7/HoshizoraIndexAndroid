@@ -19,10 +19,10 @@ import kotlinx.coroutines.withContext
 /** 地点情報と、その地点の直近取得結果(時間別)をまとめたもの */
 data class LocationWithResults(
     val location: LocationEntity,
-    val results: List<StarIndexResultEntity>
+    val results: List<StarIndexResultEntity>,
 )
 
-class LocationListViewModel(private val context: Context) : ViewModel() {
+class LocationListViewModel(context: Context) : ViewModel() {
 
     private val locationDao = AppDatabase.getInstance(context).locationDao()
     private val resultDao = AppDatabase.getInstance(context).starIndexResultDao()
@@ -37,7 +37,7 @@ class LocationListViewModel(private val context: Context) : ViewModel() {
             locations.map { loc ->
                 LocationWithResults(
                     location = loc,
-                    results = grouped[loc.id].orEmpty().sortedBy { it.datetime }
+                    results = grouped[loc.id].orEmpty().sortedBy { it.datetime },
                 )
             }
         }

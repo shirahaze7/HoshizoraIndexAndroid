@@ -36,19 +36,18 @@ class MainActivity : ComponentActivity() {
                             LocationListScreen(
                                 onAddClick = { navController.navigate("edit/-1") },
                                 onEditClick = { id -> navController.navigate("edit/$id") },
-                                onSettingsClick = { navController.navigate("settings") }
+                                onSettingsClick = { navController.navigate("settings") },
                             )
                         }
                         composable("edit/{locationId}") { backStackEntry ->
                             val locationId = backStackEntry.arguments
                                 ?.getString("locationId")?.toLongOrNull() ?: -1L
-                            AddEditLocationScreen(
-                                locationId = locationId,
-                                onDone = { navController.popBackStack() }
-                            )
+                            AddEditLocationScreen(locationId = locationId) {
+                                navController.popBackStack()
+                            }
                         }
                         composable("settings") {
-                            SettingsScreen(onDone = { navController.popBackStack() })
+                            SettingsScreen { navController.popBackStack() }
                         }
                     }
                 }

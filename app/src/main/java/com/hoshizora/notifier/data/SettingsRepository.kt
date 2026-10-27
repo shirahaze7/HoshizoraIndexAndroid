@@ -1,6 +1,7 @@
 package com.hoshizora.notifier.data
 
 import android.content.Context
+import androidx.core.content.edit
 
 /**
  * しきい値・対象時間帯・実行時刻などのアプリ設定を SharedPreferences で保存する。
@@ -12,31 +13,32 @@ class SettingsRepository(context: Context) {
 
     var threshold: Int
         get() = prefs.getInt(KEY_THRESHOLD, DEFAULT_THRESHOLD)
-        set(value) = prefs.edit().putInt(KEY_THRESHOLD, value).apply()
+        set(value) = prefs.edit { putInt(KEY_THRESHOLD, value) }
 
     /** 対象時間帯 (0-23) をカンマ区切り文字列で保存 */
     var targetHours: Set<Int>
         get() = prefs.getString(KEY_TARGET_HOURS, DEFAULT_TARGET_HOURS)
-            ?.split(",")
-            ?.filter { it.isNotBlank() }
-            ?.map { it.trim().toInt() }
-            ?.toSet()
-            ?: emptySet()
-        set(value) = prefs.edit()
-            .putString(KEY_TARGET_HOURS, value.sorted().joinToString(","))
-            .apply()
+            .orEmpty()
+            .split(",")
+            .asSequence()
+            .filter { it.isNotBlank() }
+            .map { it.trim().toInt() }
+            .toSet()
+        set(value) = prefs.edit {
+            putString(KEY_TARGET_HOURS, value.sorted().joinToString(","))
+        }
 
     var runHour: Int
         get() = prefs.getInt(KEY_RUN_HOUR, DEFAULT_RUN_HOUR)
-        set(value) = prefs.edit().putInt(KEY_RUN_HOUR, value).apply()
+        set(value) = prefs.edit { putInt(KEY_RUN_HOUR, value) }
 
     var runMinute: Int
         get() = prefs.getInt(KEY_RUN_MINUTE, 0)
-        set(value) = prefs.edit().putInt(KEY_RUN_MINUTE, value).apply()
+        set(value) = prefs.edit { putInt(KEY_RUN_MINUTE, value) }
 
     var notifyWhenNone: Boolean
         get() = prefs.getBoolean(KEY_NOTIFY_WHEN_NONE, false)
-        set(value) = prefs.edit().putBoolean(KEY_NOTIFY_WHEN_NONE, value).apply()
+        set(value) = prefs.edit { putBoolean(KEY_NOTIFY_WHEN_NONE, value) }
 
     companion object {
         private const val KEY_THRESHOLD = "threshold"

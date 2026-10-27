@@ -24,16 +24,16 @@ import java.time.format.DateTimeParseException
  */
 class StarIndexCheckWorker(
     context: Context,
-    params: WorkerParameters
+    params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
 
     data class NotifyResult(
         val locationName: String,
         val index: Int,
-        val datetime: String?
+        val datetime: String?,
     )
 
-    override suspend fun doWork(): androidx.work.ListenableWorker.Result {
+    override suspend fun doWork(): Result {
         return withContext(Dispatchers.IO) {
             try {
                 val db = AppDatabase.getInstance(applicationContext)
@@ -41,7 +41,7 @@ class StarIndexCheckWorker(
                 val locations = db.locationDao().getAll()
 
                 if (locations.isEmpty()) {
-                    return@withContext androidx.work.ListenableWorker.Result.success()
+                    return@withContext Result.success()
                 }
 
                 val threshold = settings.threshold
@@ -65,7 +65,7 @@ class StarIndexCheckWorker(
 
                     val best = hourlyResults.maxByOrNull { it.index }
                     checked.add(loc.name to (best?.index ?: 0))
-                    if (best != null && best.index >= threshold) {
+                    if ((best != null) && (best.index >= threshold)) {
                         visible.add(NotifyResult(loc.name, best.index, best.datetime))
                     }
                 }
@@ -77,7 +77,7 @@ class StarIndexCheckWorker(
                     NotificationHelper.show(
                         applicationContext,
                         "本日($today)星が見えそうな地点があります",
-                        body
+                        body,
                     )
                 } else if (settings.notifyWhenNone) {
                     val body = checked.joinToString("\n") {
@@ -86,13 +86,13 @@ class StarIndexCheckWorker(
                     NotificationHelper.show(
                         applicationContext,
                         "本日($today)は見えそうな地点なし",
-                        body
+                        body,
                     )
                 }
 
-                androidx.work.ListenableWorker.Result.success()
-            } catch (e: Exception) {
-                androidx.work.ListenableWorker.Result.retry()
+                Result.success()
+            } catch (_: Exception) {
+                Result.retry()
             }
         }
     }
@@ -105,18 +105,18 @@ class StarIndexCheckWorker(
         loc: LocationEntity,
         today: LocalDate,
         targetHours: Set<Int>,
-        fetchedAt: Long
+        fetchedAt: Long,
     ): List<StarIndexResultEntity>? {
         val response = try {
             RetrofitClient.api.getStarIndex(loc.lat, loc.lon, loc.alt)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             return null
         }
 
         val entry: DayEntry = response.resultList.data.firstOrNull { entry ->
             try {
                 OffsetDateTime.parse(entry.startDatetime).toLocalDate() == today
-            } catch (e: DateTimeParseException) {
+            } catch (_: DateTimeParseException) {
                 false
             }
         } ?: return null
@@ -125,7 +125,7 @@ class StarIndexCheckWorker(
         for (item in entry.starlightIndex) {
             val dt = try {
                 OffsetDateTime.parse(item.datetime)
-            } catch (e: DateTimeParseException) {
+            } catch (_: DateTimeParseException) {
                 continue
             }
             if (dt.hour !in targetHours) continue
@@ -137,8 +137,8 @@ class StarIndexCheckWorker(
                     hour = dt.hour,
                     isNextDay = dt.toLocalDate() != today,
                     index = item.index,
-                    fetchedAt = fetchedAt
-                )
+                    fetchedAt = fetchedAt,
+                ),
             )
         }
         return results

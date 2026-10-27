@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Star icon centered in foreground -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M54,30 L59.5,43 L73.5,44.5 L63,54 L66,68 L54,60.5 L42,68 L45,54 L34.5,44.5 L48.5,43 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,30 L34,35 L39,36 L35,39.5 L36,44.5 L32,42 L28,44.5 L29,39.5 L25,36 L30,35 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M76,28 L77.5,32 L81.5,32.5 L78.5,35.5 L79.5,39.5 L76,37.5 L72.5,39.5 L73.5,35.5 L70.5,32.5 L74.5,32 Z" />
+</vector>

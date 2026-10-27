@@ -11,7 +11,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,10 +51,10 @@ fun SettingsScreen(onDone: () -> Unit) {
     val context = LocalContext.current
     val settings = remember { SettingsRepository(context) }
 
-    var threshold by remember { mutableStateOf(settings.threshold.toFloat()) }
+    var threshold by remember { mutableFloatStateOf(settings.threshold.toFloat()) }
     // 保存済みの値のうち、選択可能範囲(18時〜翌8時)に含まれるものだけを反映
     var selectedHours by remember {
-        mutableStateOf(settings.targetHours.filter { it in SELECTABLE_HOURS }.toSet())
+        mutableStateOf(settings.targetHours.asSequence().filter { it in SELECTABLE_HOURS }.toSet())
     }
     var runHour by remember { mutableStateOf(settings.runHour.toString()) }
     var runMinute by remember { mutableStateOf(settings.runMinute.toString()) }
@@ -65,39 +66,39 @@ fun SettingsScreen(onDone: () -> Unit) {
                 title = { Text("設定") },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "戻る")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
                     }
-                }
+                },
             )
-        }
+        },
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(padding)
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
                 text = buildAnnotatedString {
                     append("星空指数: ")
                     withStyle(style = SpanStyle(color = Color.Red)) {
-                        append("${threshold.toInt()}")
+                        append(threshold.toInt().toString())
                     }
                     append(" 以上で通知（数が大きいほど良く見える）")
-                }
+                },
             )
             Slider(
                 value = threshold,
                 onValueChange = { threshold = it },
                 valueRange = 0f..4f,
-                steps = 3
+                steps = 3,
             )
 
             Text("対象時間帯 (18時〜翌8時の範囲で選択)")
             LazyVerticalGrid(
                 columns = GridCells.Fixed(5),
-                modifier = Modifier.height(200.dp)
+                modifier = Modifier.height(200.dp),
             ) {
                 items(SELECTABLE_HOURS) { hour ->
                     val isSelected = selectedHours.contains(hour)
@@ -111,36 +112,36 @@ fun SettingsScreen(onDone: () -> Unit) {
                                 selectedHours + hour
                             }
                         },
-                        label = { Text(hourLabel(hour)) }
+                        label = { Text(hourLabel(hour)) },
                     )
                 }
             }
 
             Text("毎日の実行時刻")
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlinedTextField(
                     value = runHour,
                     onValueChange = { runHour = it.filter { c -> c.isDigit() } },
                     label = { Text("時") },
-                    modifier = Modifier.wrapContentWidth()
+                    modifier = Modifier.wrapContentWidth(),
                 )
                 OutlinedTextField(
                     value = runMinute,
                     onValueChange = { runMinute = it.filter { c -> c.isDigit() } },
                     label = { Text("分") },
-                    modifier = Modifier.wrapContentWidth()
+                    modifier = Modifier.wrapContentWidth(),
                 )
             }
 
             Row(
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Switch(
                     checked = notifyWhenNone,
-                    onCheckedChange = { notifyWhenNone = it }
+                    onCheckedChange = { notifyWhenNone = it },
                 )
                 Text("該当地点がない日も通知する")
             }
@@ -156,7 +157,7 @@ fun SettingsScreen(onDone: () -> Unit) {
                     WorkScheduler.scheduleDaily(context)
                     onDone()
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("保存")
             }
