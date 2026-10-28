@@ -19,15 +19,15 @@ data class Star(
 @Composable
 fun StarryBackground(modifier: Modifier = Modifier) {
     val stars = remember {
-        List(80) {
+        List(100) {
             Star(
                 position = Offset(
                     x = Random.nextFloat(),
                     y = Random.nextFloat()
                 ),
-                size = Random.nextFloat() * 2f + 0.5f,
+                size = Random.nextFloat() * 2.5f + 1f,
                 twinkleSpeed = Random.nextFloat() * 2000f + 1000f,
-                initialPhase = Random.nextFloat() * 2f * Math.PI.toFloat()
+                initialPhase = Random.nextFloat() * 6.28f
             )
         }
     }
@@ -35,9 +35,9 @@ fun StarryBackground(modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "starTwinkle")
     val time by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 6.28318f, // 2π
+        targetValue = 6.28f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            animation = tween(durationMillis = 4000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "time"
@@ -51,15 +51,24 @@ fun StarryBackground(modifier: Modifier = Modifier) {
             val x = star.position.x * width
             val y = star.position.y * height
             
-            // 瞬き効果: sin波で透明度を変化
-            val twinkle = kotlin.math.sin(time + star.initialPhase).toFloat()
-            val alpha = 0.3f + twinkle * 0.7f
+            val twinkle = kotlin.math.sin((time * (3000f / star.twinkleSpeed)) + star.initialPhase)
+            val alpha = (0.2f + (twinkle + 1f) * 0.4f).coerceIn(0.2f, 1f)
             
+            // 星のコア
             drawCircle(
                 color = Color.White.copy(alpha = alpha),
                 radius = star.size,
                 center = Offset(x, y)
             )
+            
+            // 星のグロー
+            if (alpha > 0.6f) {
+                drawCircle(
+                    color = Color(0xFF7DD3FC).copy(alpha = (alpha - 0.6f) * 0.3f),
+                    radius = star.size * 2f,
+                    center = Offset(x, y)
+                )
+            }
         }
     }
 }
