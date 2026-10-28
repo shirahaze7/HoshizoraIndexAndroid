@@ -6,8 +6,15 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -50,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,7 +65,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hoshizora.notifier.data.StarIndexResultEntity
+import com.hoshizora.notifier.ui.theme.DarkOutline
+import com.hoshizora.notifier.ui.theme.SecondaryCyan
 import com.hoshizora.notifier.ui.theme.StarIndexColors
+import com.hoshizora.notifier.ui.theme.StarryBackground
 import com.hoshizora.notifier.worker.WorkScheduler
 import kotlinx.coroutines.launch
 import java.io.File
@@ -182,35 +193,40 @@ fun LocationListScreen(
             }
         }
     ) { padding ->
-        if (items.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    "右下の + から監視地点を追加してください",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-            ) {
-                items(items, key = { it.location.id }) { item ->
-                    LocationCard(
-                        item = item,
-                        threshold = threshold,
-                        onEditClick = { onEditClick(item.location.id) },
-                        onDelete = { viewModel.delete(item.location) }
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 星空背景
+            StarryBackground()
+            
+            if (items.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "右下の + から監視地点を追加してください",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                ) {
+                    items(items, key = { it.location.id }) { item ->
+                        LocationCard(
+                            item = item,
+                            threshold = threshold,
+                            onEditClick = { onEditClick(item.location.id) },
+                            onDelete = { viewModel.delete(item.location) }
+                        )
+                    }
                 }
             }
         }
@@ -226,16 +242,28 @@ private fun LocationCard(
 ) {
     val hasHighIndex = item.results.any { it.index >= threshold }
 
+    // グローエフェクトのアニメーション
+    val infiniteTransition = rememberInfiniteTransition(label = "cardGlow")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowAlpha"
+    )
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
         ),
         border = if (hasHighIndex) {
-            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+            BorderStroke(2.dp, SecondaryCyan.copy(alpha = glowAlpha))  // 高指数時は脈動するシアン
         } else {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+            BorderStroke(1.dp, DarkOutline.copy(alpha = 0.5f))  // 通常時は星の輝きのような青紫
         }
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -360,10 +388,27 @@ private fun IndexChip(result: StarIndexResultEntity) {
     val bgColor = StarIndexColors.getBackgroundColor(index)
     val textColor = StarIndexColors.getTextColor(index)
 
+    // 高指数時にチップを脈動させる
+    val shouldPulse = index >= 3
+    val infiniteTransition = rememberInfiniteTransition(label = "chipPulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (shouldPulse) 1.05f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+
     Surface(
         shape = RoundedCornerShape(6.dp),
         color = bgColor,
-        contentColor = textColor
+        contentColor = textColor,
+        modifier = Modifier.graphicsLayer {
+            scaleX = pulseScale
+            scaleY = pulseScale
+        }
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,

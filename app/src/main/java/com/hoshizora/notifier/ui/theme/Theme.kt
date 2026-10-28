@@ -5,15 +5,15 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// カラーパレット定義 (Midnight Minimal Navy)
-val DarkBackground = Color(0xFF0F1423)
-val DarkSurface = Color(0xFF1B2238)
-val DarkSurfaceVariant = Color(0xFF28314D)
-val DarkOutline = Color(0xFF3F4B6B)
+// カラーパレット定義 (Starry Night Sky)
+val DarkBackground = Color(0xFF0B0E1A)  // 深い宇宙空間
+val DarkSurface = Color(0xFF13182E)      // 夜空のような紺
+val DarkSurfaceVariant = Color(0xFF1A2238)
+val DarkOutline = Color(0xFF2A3F6B)      // 星の輝きを表現する青紫
 
-val PrimaryGold = Color(0xFFF59E0B)
+val PrimaryGold = Color(0xFFFCD34D)      // 星の輝き（ゴールド）
 val OnPrimaryDark = Color(0xFF1E1300)
-val SecondaryCyan = Color(0xFF38BDF8)
+val SecondaryCyan = Color(0xFF7DD3FC)    // 星の輝き（シアン）
 val OnSecondaryDark = Color(0xFF001F2D)
 
 val OnSurfaceWhite = Color(0xFFF3F4F6)
@@ -37,22 +37,22 @@ private val DarkColorScheme = darkColorScheme(
     outline = DarkOutline
 )
 
-// 0〜4の5段階の星空指数カラー設定
+// 0〜4の5段階の星空指数カラー設定（星空イメージ）
 object StarIndexColors {
-    val Level0Bg = Color(0xFF27272A)
-    val Level0Text = Color(0xFF9CA3AF)
+    val Level0Bg = Color(0xFF1E1E2E)      // 曇り空
+    val Level0Text = Color(0xFF94A3B8)
 
-    val Level1Bg = Color(0xFF374151)
-    val Level1Text = Color(0xFFD1D5DB)
+    val Level1Bg = Color(0xFF1E3A5F)      // 薄暗い夜空
+    val Level1Text = Color(0xFFBAE6FD)
 
-    val Level2Bg = Color(0xFF0369A1)
+    val Level2Bg = Color(0xFF0C4A6E)      // 星が見える夜空（ブルー）
     val Level2Text = Color(0xFFE0F2FE)
 
-    val Level3Bg = Color(0xFFB45309)
-    val Level3Text = Color(0xFFFEF3C7)
+    val Level3Bg = Color(0xFF7C3AED)      // 綺麗な星空（紫）
+    val Level3Text = Color(0xFFF3E8FF)
 
-    val Level4Bg = Color(0xFFD97706)
-    val Level4Text = Color(0xFFFFFBEB)
+    val Level4Bg = Color(0xFFDC2626)      // 最高の星空（赤系）
+    val Level4Text = Color(0xFFFFF1F2)
 
     fun getBackgroundColor(index: Int): Color = when {
         index <= 0 -> Level0Bg
