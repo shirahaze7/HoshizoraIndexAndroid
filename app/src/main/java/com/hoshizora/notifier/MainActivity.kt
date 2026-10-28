@@ -6,7 +6,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -14,6 +13,7 @@ import androidx.navigation.compose.rememberNavController
 import com.hoshizora.notifier.ui.AddEditLocationScreen
 import com.hoshizora.notifier.ui.LocationListScreen
 import com.hoshizora.notifier.ui.SettingsScreen
+import com.hoshizora.notifier.ui.theme.HoshizoraTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            MaterialTheme {
+            HoshizoraTheme {
                 Surface {
                     val navController = rememberNavController()
                     NavHost(navController = navController, startDestination = "list") {

@@ -6,15 +6,22 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -24,6 +31,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -31,8 +39,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,10 +50,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hoshizora.notifier.data.StarIndexResultEntity
+import com.hoshizora.notifier.ui.theme.StarIndexColors
 import com.hoshizora.notifier.worker.WorkScheduler
 import kotlinx.coroutines.launch
 import java.io.File
@@ -90,7 +103,12 @@ fun LocationListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("星空指数 監視地点") },
+                title = {
+                    Text(
+                        "星空指数 監視地点",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
                 actions = {
                     IconButton(onClick = { WorkScheduler.runOnce(context) }) {
                         Icon(Icons.Default.PlayArrow, contentDescription = "今すぐ実行")
@@ -98,13 +116,16 @@ fun LocationListScreen(
                     IconButton(onClick = onSettingsClick) {
                         Icon(Icons.Default.Settings, contentDescription = "設定")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
         floatingActionButton = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 SmallFloatingActionButton(
                     onClick = {
@@ -125,7 +146,6 @@ fun LocationListScreen(
                                     putExtra(Intent.EXTRA_STREAM, contentUri)
                                     clipData = ClipData.newRawUri("Locations JSON", contentUri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    // Activity以外から起動される可能性を考慮
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 }
                                 val chooser = Intent.createChooser(intent, "JSONとしてエクスポート")
@@ -137,17 +157,23 @@ fun LocationListScreen(
                             }
                         }
                     },
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
                     Icon(Icons.Default.Upload, contentDescription = "エクスポート")
                 }
                 SmallFloatingActionButton(
                     onClick = { importLauncher.launch("application/json") },
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
                     Icon(Icons.Default.Download, contentDescription = "インポート")
                 }
-                FloatingActionButton(onClick = onAddClick) {
+                FloatingActionButton(
+                    onClick = onAddClick,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
                     Icon(Icons.Default.Add, contentDescription = "地点を追加")
                 }
             }
@@ -163,13 +189,14 @@ fun LocationListScreen(
             ) {
                 Text(
                     "右下の + から監視地点を追加してください",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         } else {
             LazyColumn(
-                contentPadding = PaddingValues(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
@@ -194,45 +221,76 @@ private fun LocationCard(
     onEditClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    // 閾値以上の星空指数があるかチェック
     val hasHighIndex = item.results.any { it.index >= threshold }
-    
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = androidx.compose.material3.CardDefaults.cardColors(
-            containerColor = if (hasHighIndex) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surface
-            }
-        )
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = if (hasHighIndex) {
+            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+        } else {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+        }
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(item.location.name, style = MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = item.location.name,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        if (hasHighIndex) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ) {
+                                Text(
+                                    text = "高指数時間帯あり",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        "緯度 ${item.location.lat}  経度 ${item.location.lon}  標高 ${item.location.alt}",
+                        text = "緯度 ${item.location.lat}  経度 ${item.location.lon}  標高 ${item.location.alt}m",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Row {
                     IconButton(onClick = onEditClick) {
-                        Icon(Icons.Default.Edit, contentDescription = "編集")
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "編集",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "削除")
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "削除",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
 
             if (item.results.isEmpty()) {
                 Text(
-                    "まだデータがありません（右上の再生ボタンで取得できます）",
+                    text = "まだデータがありません（右上の再生ボタンで取得できます）",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp)
@@ -241,38 +299,58 @@ private fun LocationCard(
                 val fetchedAt = item.results.firstOrNull()?.fetchedAt
                 if (fetchedAt != null) {
                     Text(
-                        "取得日時: ${formatFetchedAt(fetchedAt)}",
+                        text = "取得日時: ${formatFetchedAt(fetchedAt)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                        modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
                     )
                 }
-                HourlyIndexTable(item.results)
+                HourlyIndexList(item.results)
             }
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HourlyIndexTable(results: List<StarIndexResultEntity>) {
-    Column {
-        results.chunked(4).forEach { rowItems ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                rowItems.forEach { result ->
-                    Text(
-                        text = "${formatHourLabel(result)}: ${result.index}",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                // 余りマスを埋めて列崩れを防ぐ
-                repeat(4 - rowItems.size) {
-                    Text("", modifier = Modifier.weight(1f))
-                }
-            }
+private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        results.forEach { result ->
+            IndexChip(result = result)
+        }
+    }
+}
+
+@Composable
+private fun IndexChip(result: StarIndexResultEntity) {
+    val index = result.index.coerceIn(0, 4)
+    val bgColor = StarIndexColors.getBackgroundColor(index)
+    val textColor = StarIndexColors.getTextColor(index)
+
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = bgColor,
+        contentColor = textColor
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+        ) {
+            Text(
+                text = formatHourLabel(result),
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 10.sp
+            )
+            Spacer(modifier = Modifier.height(1.dp))
+            Text(
+                text = "★$index",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                fontSize = 12.sp
+            )
         }
     }
 }
