@@ -73,7 +73,7 @@
 -keepclasseswithmembers class * {
     @com.squareup.moshi.* <methods>;
 }
--keep @com.squareup.moshi.JsonQualifier @interface *
+-keep @com.squareup.moshi.JsonQualifier class *
 -keepclassmembers @com.squareup.moshi.JsonClass class * extends java.lang.Enum {
     <fields>;
     **[] values();
