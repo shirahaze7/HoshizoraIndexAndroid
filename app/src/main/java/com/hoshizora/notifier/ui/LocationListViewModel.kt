@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.hoshizora.notifier.data.AppDatabase
 import com.hoshizora.notifier.data.LocationEntity
+import com.hoshizora.notifier.data.SettingsRepository
 import com.hoshizora.notifier.data.StarIndexResultEntity
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -26,6 +27,7 @@ class LocationListViewModel(context: Context) : ViewModel() {
 
     private val locationDao = AppDatabase.getInstance(context).locationDao()
     private val resultDao = AppDatabase.getInstance(context).starIndexResultDao()
+    private val settingsRepository = SettingsRepository(context)
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val listType = Types.newParameterizedType(List::class.java, LocationEntity::class.java)
@@ -39,8 +41,17 @@ class LocationListViewModel(context: Context) : ViewModel() {
                     location = loc,
                     results = grouped[loc.id].orEmpty().sortedBy { it.datetime },
                 )
-            }
+            }.sortedWith(
+                compareByDescending<LocationWithResults> { item ->
+                    // 星空指数の最大値が高い地点を上位に表示（データがない場合は -1）
+                    item.results.maxOfOrNull { it.index } ?: -1
+                }.thenBy { item ->
+                    item.location.id
+                }
+            )
         }
+    
+    fun getThreshold(): Int = settingsRepository.threshold
 
     fun delete(location: LocationEntity) {
         viewModelScope.launch { locationDao.delete(location) }

@@ -64,6 +64,7 @@ fun LocationListScreen(
     val items by viewModel.locationsWithResults.collectAsState(initial = emptyList())
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val threshold = viewModel.getThreshold()
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -176,6 +177,7 @@ fun LocationListScreen(
                 items(items, key = { it.location.id }) { item ->
                     LocationCard(
                         item = item,
+                        threshold = threshold,
                         onEditClick = { onEditClick(item.location.id) },
                         onDelete = { viewModel.delete(item.location) }
                     )
@@ -188,10 +190,23 @@ fun LocationListScreen(
 @Composable
 private fun LocationCard(
     item: LocationWithResults,
+    threshold: Int,
     onEditClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    // 閾値以上の星空指数があるかチェック
+    val hasHighIndex = item.results.any { it.index >= threshold }
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = if (hasHighIndex) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        )
+    ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
