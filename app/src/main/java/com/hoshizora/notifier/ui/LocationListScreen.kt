@@ -355,11 +355,13 @@ private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.primary
                         )
-                        // 今日・明日の表示
-                        val today = java.time.LocalDate.now()
+                        // 今日・明日の表示（端末の日付に合わせて動的に判定）
+                        val now = java.time.LocalDate.now()
+                        
                         val label = when {
-                            date == today -> "今日"
-                            date == today.plusDays(1) -> "明日"
+                            date == now -> "今日"
+                            date == now.plusDays(1) -> "明日"
+                            date == now.plusDays(2) -> "明後日"
                             else -> null
                         }
                         if (label != null) {

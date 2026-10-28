@@ -40,15 +40,21 @@ class SettingsRepository(context: Context) {
         get() = prefs.getBoolean(KEY_NOTIFY_WHEN_NONE, false)
         set(value) = prefs.edit { putBoolean(KEY_NOTIFY_WHEN_NONE, value) }
 
+    var fetchHours: Int
+        get() = prefs.getInt(KEY_FETCH_HOURS, DEFAULT_FETCH_HOURS)
+        set(value) = prefs.edit { putInt(KEY_FETCH_HOURS, value) }
+
     companion object {
         private const val KEY_THRESHOLD = "threshold"
         private const val KEY_TARGET_HOURS = "target_hours"
         private const val KEY_RUN_HOUR = "run_hour"
         private const val KEY_RUN_MINUTE = "run_minute"
         private const val KEY_NOTIFY_WHEN_NONE = "notify_when_none"
+        private const val KEY_FETCH_HOURS = "fetch_hours"
 
         const val DEFAULT_THRESHOLD = 2
         const val DEFAULT_TARGET_HOURS = "20,21,22,23,0,1,2"
         const val DEFAULT_RUN_HOUR = 18
+        const val DEFAULT_FETCH_HOURS = 72
     }
 }

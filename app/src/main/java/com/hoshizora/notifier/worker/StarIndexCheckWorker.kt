@@ -47,12 +47,13 @@ class StarIndexCheckWorker(
                 val targetHours = settings.targetHours
                 val today = LocalDate.now()
                 val fetchedAt = System.currentTimeMillis()
+                val fetchHours = settings.fetchHours
 
                 val visible = mutableListOf<NotifyResult>()
                 val checked = mutableListOf<Pair<String, Int?>>()
 
                 for (loc in locations) {
-                    val hourlyResults = fetchHourlyResults(loc, today, targetHours, fetchedAt)
+                    val hourlyResults = fetchHourlyResults(loc, today, targetHours, fetchedAt, fetchHours)
 
                     if (hourlyResults == null) {
                         checked.add(loc.name to null)
@@ -105,6 +106,7 @@ class StarIndexCheckWorker(
         today: LocalDate,
         targetHours: Set<Int>,
         fetchedAt: Long,
+        fetchHours: Int,
     ): List<StarIndexResultEntity>? {
         val response = try {
             RetrofitClient.api.getStarIndex(loc.lat, loc.lon, loc.alt)
@@ -115,16 +117,16 @@ class StarIndexCheckWorker(
         val entries = response.resultList.data
         if (entries.isEmpty()) return null
 
-        // 当日18時から翌日8時までのデータを全て取得するため、
-        // 当日の開始時刻（18時）をcutoffとする
-        val now = OffsetDateTime.now()
-        val cutoff = if (now.hour < 18) {
-            // 現在時刻が18時より前の場合、前日18時をcutoff
-            now.toLocalDate().minusDays(1).atTime(18, 0).atOffset(now.offset)
-        } else {
-            // 現在時刻が18時以降の場合、当日18時をcutoff
-            now.toLocalDate().atTime(18, 0).atOffset(now.offset)
+        // デバッグ: APIから返されたデータの範囲を確認
+        android.util.Log.d("StarIndexWorker", "API returned ${entries.size} day entries for location ${loc.name}")
+        entries.forEach { entry ->
+            android.util.Log.d("StarIndexWorker", "  Day: ${entry.startDatetime} to ${entry.endDatetime}, hours: ${entry.starlightIndex.size}")
         }
+
+        // 現在時刻以降、指定時間数以内のデータのみを表示
+        val now = OffsetDateTime.now()
+        val cutoffStart = now
+        val cutoffEnd = now.plusHours(fetchHours.toLong())
         
         val results = mutableListOf<StarIndexResultEntity>()
 
@@ -135,7 +137,8 @@ class StarIndexCheckWorker(
                 } catch (_: DateTimeParseException) {
                     continue
                 }
-                if (dt.isBefore(cutoff)) continue
+                if (dt.isBefore(cutoffStart)) continue
+                if (dt.isAfter(cutoffEnd)) continue
                 if (dt.hour !in targetHours) continue
 
                 results.add(

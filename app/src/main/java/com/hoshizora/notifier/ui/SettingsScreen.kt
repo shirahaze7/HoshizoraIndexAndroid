@@ -67,6 +67,7 @@ fun SettingsScreen(onDone: () -> Unit) {
     var runHour by remember { mutableStateOf(settings.runHour.toString()) }
     var runMinute by remember { mutableStateOf(settings.runMinute.toString()) }
     var notifyWhenNone by remember { mutableStateOf(settings.notifyWhenNone) }
+    var fetchHours by remember { mutableFloatStateOf(settings.fetchHours.toFloat()) }
 
     val scrollState = rememberScrollState()
 
@@ -249,6 +250,40 @@ fun SettingsScreen(onDone: () -> Unit) {
                 }
             }
 
+            // セクション 4: 取得期間
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "取得期間",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Text(
+                        "実行時刻から ${fetchHours.toInt()}時間後まで",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Slider(
+                        value = fetchHours,
+                        onValueChange = { fetchHours = it },
+                        valueRange = 8f..72f,
+                        steps = 7,
+                    )
+                    Text(
+                        "指数データを実行時刻から何時間後まで取得・表示するか設定します（APIは約72時間分まで提供）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
             Button(
                 onClick = {
                     settings.threshold = threshold.toInt()
@@ -257,6 +292,7 @@ fun SettingsScreen(onDone: () -> Unit) {
                         ?: SettingsRepository.DEFAULT_RUN_HOUR
                     settings.runMinute = runMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0
                     settings.notifyWhenNone = notifyWhenNone
+                    settings.fetchHours = fetchHours.toInt()
                     WorkScheduler.scheduleDaily(context)
                     onDone()
                 },
