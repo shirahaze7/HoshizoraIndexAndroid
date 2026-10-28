@@ -38,7 +38,7 @@ jobs:
 
       - name: Rename and Package APK
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${GITHUB_REF_NAME//\//-}"
           if [ "${VERSION}" = "main" ] || [ "${VERSION}" = "master" ]; then
             VERSION="v1.0.0"
           fi
