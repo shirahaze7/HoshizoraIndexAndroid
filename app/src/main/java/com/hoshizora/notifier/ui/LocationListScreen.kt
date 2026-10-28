@@ -330,13 +330,14 @@ private fun LocationCard(
 private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
     val dateFormatter = remember { DateTimeFormatter.ofPattern("M/d(E)", Locale.JAPAN) }
 
+    // 日付ごとにグループ化（sortedされたMapを使用）
     val grouped = results.groupBy { result ->
         try {
             OffsetDateTime.parse(result.datetime).toLocalDate()
         } catch (_: Exception) {
             null
         }
-    }
+    }.toSortedMap(nullsLast(naturalOrder()))
 
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -345,11 +346,37 @@ private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
         grouped.forEach { (date, itemsForDate) ->
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (date != null) {
-                    Text(
-                        text = date.format(dateFormatter),
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = date.format(dateFormatter),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        // 今日・明日の表示
+                        val today = java.time.LocalDate.now()
+                        val label = when {
+                            date == today -> "今日"
+                            date == today.plusDays(1) -> "明日"
+                            else -> null
+                        }
+                        if (label != null) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
                 }
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),

@@ -115,7 +115,17 @@ class StarIndexCheckWorker(
         val entries = response.resultList.data
         if (entries.isEmpty()) return null
 
-        val cutoff = OffsetDateTime.now().minusHours(1)
+        // 当日18時から翌日8時までのデータを全て取得するため、
+        // 当日の開始時刻（18時）をcutoffとする
+        val now = OffsetDateTime.now()
+        val cutoff = if (now.hour < 18) {
+            // 現在時刻が18時より前の場合、前日18時をcutoff
+            now.toLocalDate().minusDays(1).atTime(18, 0).atOffset(now.offset)
+        } else {
+            // 現在時刻が18時以降の場合、当日18時をcutoff
+            now.toLocalDate().atTime(18, 0).atOffset(now.offset)
+        }
+        
         val results = mutableListOf<StarIndexResultEntity>()
 
         for (entry in entries) {
