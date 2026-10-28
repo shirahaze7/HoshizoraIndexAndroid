@@ -46,6 +46,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +62,8 @@ import com.hoshizora.notifier.worker.WorkScheduler
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 
@@ -314,13 +317,39 @@ private fun LocationCard(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("M/d(E)", Locale.JAPAN) }
+
+    val grouped = results.groupBy { result ->
+        try {
+            OffsetDateTime.parse(result.datetime).toLocalDate()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        results.forEach { result ->
-            IndexChip(result = result)
+        grouped.forEach { (date, itemsForDate) ->
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (date != null) {
+                    Text(
+                        text = date.format(dateFormatter),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    itemsForDate.forEach { result ->
+                        IndexChip(result = result)
+                    }
+                }
+            }
         }
     }
 }
@@ -341,7 +370,7 @@ private fun IndexChip(result: StarIndexResultEntity) {
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
         ) {
             Text(
-                text = formatHourLabel(result),
+                text = "${result.hour}時",
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 10.sp
             )
@@ -353,11 +382,6 @@ private fun IndexChip(result: StarIndexResultEntity) {
             )
         }
     }
-}
-
-private fun formatHourLabel(result: StarIndexResultEntity): String {
-    val prefix = if (result.isNextDay) "翌" else ""
-    return "$prefix${result.hour}時"
 }
 
 private fun formatFetchedAt(epochMillis: Long): String {

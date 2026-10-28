@@ -7,7 +7,6 @@ import com.hoshizora.notifier.data.AppDatabase
 import com.hoshizora.notifier.data.LocationEntity
 import com.hoshizora.notifier.data.SettingsRepository
 import com.hoshizora.notifier.data.StarIndexResultEntity
-import com.hoshizora.notifier.network.DayEntry
 import com.hoshizora.notifier.network.RetrofitClient
 import com.hoshizora.notifier.notification.NotificationHelper
 import kotlinx.coroutines.Dispatchers
@@ -98,7 +97,7 @@ class StarIndexCheckWorker(
     }
 
     /**
-     * 指定地点の当日分データを取得し、target_hours に含まれる時間帯だけを
+     * 指定地点の直近未来データを取得し、targetHours に含まれる時間帯だけを
      * StarIndexResultEntity のリストに変換して返す。取得失敗時は null。
      */
     private suspend fun fetchHourlyResults(
@@ -113,34 +112,35 @@ class StarIndexCheckWorker(
             return null
         }
 
-        val entry: DayEntry = response.resultList.data.firstOrNull { entry ->
-            try {
-                OffsetDateTime.parse(entry.startDatetime).toLocalDate() == today
-            } catch (_: DateTimeParseException) {
-                false
-            }
-        } ?: return null
+        val entries = response.resultList.data
+        if (entries.isEmpty()) return null
 
+        val cutoff = OffsetDateTime.now().minusHours(1)
         val results = mutableListOf<StarIndexResultEntity>()
-        for (item in entry.starlightIndex) {
-            val dt = try {
-                OffsetDateTime.parse(item.datetime)
-            } catch (_: DateTimeParseException) {
-                continue
-            }
-            if (dt.hour !in targetHours) continue
 
-            results.add(
-                StarIndexResultEntity(
-                    locationId = loc.id,
-                    datetime = item.datetime,
-                    hour = dt.hour,
-                    isNextDay = dt.toLocalDate() != today,
-                    index = item.index,
-                    fetchedAt = fetchedAt,
-                ),
-            )
+        for (entry in entries) {
+            for (item in entry.starlightIndex) {
+                val dt = try {
+                    OffsetDateTime.parse(item.datetime)
+                } catch (_: DateTimeParseException) {
+                    continue
+                }
+                if (dt.isBefore(cutoff)) continue
+                if (dt.hour !in targetHours) continue
+
+                results.add(
+                    StarIndexResultEntity(
+                        locationId = loc.id,
+                        datetime = item.datetime,
+                        hour = dt.hour,
+                        isNextDay = dt.toLocalDate() != today,
+                        index = item.index,
+                        fetchedAt = fetchedAt,
+                    ),
+                )
+            }
         }
-        return results
+
+        return results.distinctBy { it.datetime }.sortedBy { it.datetime }
     }
 }
