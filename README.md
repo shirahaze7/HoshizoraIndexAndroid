@@ -77,6 +77,9 @@ PCやテキストエディタで以下のようなフォーマットのJSONフ�
 
 ※インポート時、すでに登録されている地点と重複していても上書きされず、新しい地点として追加されます。
 
+### サンプルJSONファイル
+本リポジトリの [`sampleJSON/sample.json`](sampleJSON/sample.json) に、動作確認・テストインポート用に利用できるサンプル地点データ（星空観測スポット一覧）を用意しています。インポート機能のテストや初期データ登録にお使いいただけます。
+
 ---
 
 ## 緯度・経度・標高の仕様と推奨精度
@@ -124,4 +127,6 @@ HoshizoraNotifierAndroid/
 │           ├── notification/             # 通知表示ヘルパー
 │           ├── ui/                       # Jetpack Compose UI (地点一覧, 追加・編集, 設定)
 │           └── worker/                   # WorkManager (バックグラウンド自動チェック)
+└── sampleJSON/
+    └── sample.json                # インポート用サンプル地点データ
 ```
