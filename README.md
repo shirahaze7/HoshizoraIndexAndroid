@@ -3,7 +3,8 @@
 登録した複数の地点の星空指数（時間別の星の見えやすさ）をアプリ上で手軽に確認・管理し、指定した条件（しきい値や対象時間帯）を満たす日に自動で通知を受け取ることもできるAndroidアプリです。
 
 Kotlin + Jetpack Compose + Room + WorkManager + Retrofit + Moshi で構成されています。
-<img width="640" height="1259" alt="Screenshot_2026-10-29-02-40-39-228_com hoshizora notifier~2" src="https://github.com/user-attachments/assets/86980529-0187-4607-a4e0-be1a9242ff5a" />
+<img width="1280" height="2622" alt="Screenshot_2026-10-30-12-18-36-993_com hoshizora notifier-edit" src="https://github.com/user-attachments/assets/db8ec2e4-59e9-4f41-8134-456fbdcc9fcc" />
+
 
 ---
 
