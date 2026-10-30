@@ -26,6 +26,26 @@ Kotlin + Jetpack Compose + Room + WorkManager + Retrofit + Moshi で構成され
 
 ---
 
+## インストール方法
+
+### Releases から APK をダウンロードしてインストール (推奨)
+1. Android 端末のブラウザで、本リポジトリの [Releases](../../releases) ページを開きます。
+2. 最新リリースの **Assets** セクションから `.apk` ファイル（例: `HoshizoraChecker-v1.0.0.apk`）をダウンロードします。
+3. ダウンロード完了後、通知領域またはファイル管理アプリから APK ファイルを開きます。
+4. 画面の指示に従って「インストール」を選択します。
+   - ※ 初めて Play ストア外からアプリをインストールする場合、「不明なアプリのインストール」の許可設定を求められることがあります。画面の指示に従って使用しているブラウザやファイル管理アプリの許可を有効にしてください。
+
+### ソースコードからビルドしてインストール
+1. 本リポジトリをクローンします:
+   ```bash
+   git clone https://github.com/Shirahaze/HoshizoraNotifierAndroid.git
+   ```
+2. Android Studio でプロジェクトを開き、Gradle の同期を完了させます。
+3. USB デバッグを有効にした Android 端末を接続するか、エミュレータを起動します。
+4. **Run 'app'** (`Shift + F10`) を実行して端末にインストールします。
+
+---
+
 ## 使い方
 
 ### 基本操作
