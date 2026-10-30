@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.core.net.toUri
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -25,7 +26,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Upload
@@ -223,6 +224,7 @@ fun LocationListScreen(
                         LocationCard(
                             item = item,
                             threshold = threshold,
+                            onOpenMap = { openGoogleMaps(context, item.location.lat, item.location.lon, item.location.name) },
                             onEditClick = { onEditClick(item.location.id) },
                             onDelete = { viewModel.delete(item.location) }
                         )
@@ -237,6 +239,7 @@ fun LocationListScreen(
 private fun LocationCard(
     item: LocationWithResults,
     threshold: Int,
+    onOpenMap: () -> Unit,
     onEditClick: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -285,6 +288,13 @@ private fun LocationCard(
                     )
                 }
                 Row {
+                    IconButton(onClick = onOpenMap) {
+                        Icon(
+                            Icons.Default.Map,
+                            contentDescription = "Googleマップで開く",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     IconButton(onClick = onEditClick) {
                         Icon(
                             Icons.Default.Edit,
@@ -444,4 +454,23 @@ private fun IndexChip(result: StarIndexResultEntity) {
 private fun formatFetchedAt(epochMillis: Long): String {
     val sdf = SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN)
     return sdf.format(Date(epochMillis))
+}
+
+private fun openGoogleMaps(context: android.content.Context, lat: Double, lon: Double, name: String) {
+    val encodedName = Uri.encode(name)
+    val gmmIntentUri = "geo:$lat,$lon?q=$lat,$lon($encodedName)".toUri()
+    val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri).apply {
+        setPackage("com.google.android.apps.maps")
+    }
+    try {
+        context.startActivity(mapIntent)
+    } catch (_: Exception) {
+        val webUri = "https://www.google.com/maps/search/?api=1&query=$lat,$lon".toUri()
+        val webIntent = Intent(Intent.ACTION_VIEW, webUri)
+        try {
+            context.startActivity(webIntent)
+        } catch (_: Exception) {
+            Toast.makeText(context, "マップアプリを開けませんでした", Toast.LENGTH_SHORT).show()
+        }
+    }
 }
