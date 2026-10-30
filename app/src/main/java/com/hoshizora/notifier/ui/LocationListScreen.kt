@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.core.net.toUri
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -457,14 +458,14 @@ private fun formatFetchedAt(epochMillis: Long): String {
 
 private fun openGoogleMaps(context: android.content.Context, lat: Double, lon: Double, name: String) {
     val encodedName = Uri.encode(name)
-    val gmmIntentUri = Uri.parse("geo:$lat,$lon?q=$lat,$lon($encodedName)")
+    val gmmIntentUri = "geo:$lat,$lon?q=$lat,$lon($encodedName)".toUri()
     val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri).apply {
         setPackage("com.google.android.apps.maps")
     }
     try {
         context.startActivity(mapIntent)
     } catch (_: Exception) {
-        val webUri = Uri.parse("https://www.google.com/maps/search/?api=1&query=$lat,$lon")
+        val webUri = "https://www.google.com/maps/search/?api=1&query=$lat,$lon".toUri()
         val webIntent = Intent(Intent.ACTION_VIEW, webUri)
         try {
             context.startActivity(webIntent)
