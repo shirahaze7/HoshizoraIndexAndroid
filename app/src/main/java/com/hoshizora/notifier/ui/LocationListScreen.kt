@@ -1,19 +1,26 @@
 package com.hoshizora.notifier.ui
 
+import android.Manifest
 import android.content.ClipData
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.core.net.toUri
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,29 +33,42 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -61,10 +81,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.hoshizora.notifier.data.StarIndexResultEntity
 import com.hoshizora.notifier.ui.theme.DarkOutline
 import com.hoshizora.notifier.ui.theme.SecondaryCyan
@@ -90,9 +115,81 @@ fun LocationListScreen(
     )
 ) {
     val items by viewModel.locationsWithResults.collectAsState(initial = emptyList())
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val currentLocation by viewModel.currentLocation.collectAsState()
+    val maxDistanceKm by viewModel.maxDistanceKm.collectAsState()
+    val isSearchOpen by viewModel.isSearchOpen.collectAsState()
+    val isFetchingLocation by viewModel.isFetchingLocation.collectAsState()
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val threshold = viewModel.getThreshold()
+
+    val fusedLocationClient = remember {
+        LocationServices.getFusedLocationProviderClient(context)
+    }
+
+    fun fetchCurrentLocation() {
+        viewModel.setFetchingLocation(true)
+        try {
+            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) {
+                    viewModel.updateCurrentLocation(loc)
+                    viewModel.setFetchingLocation(false)
+                    Toast.makeText(context, "現在地を取得しました", Toast.LENGTH_SHORT).show()
+                } else {
+                    fusedLocationClient.getCurrentLocation(
+                        Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                        null
+                    ).addOnSuccessListener { newLoc ->
+                        viewModel.updateCurrentLocation(newLoc)
+                        viewModel.setFetchingLocation(false)
+                        if (newLoc != null) {
+                            Toast.makeText(context, "現在地を取得しました", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "現在地の取得に失敗しました", Toast.LENGTH_SHORT).show()
+                        }
+                    }.addOnFailureListener {
+                        viewModel.setFetchingLocation(false)
+                        Toast.makeText(context, "現在地の取得に失敗しました", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }.addOnFailureListener {
+                viewModel.setFetchingLocation(false)
+                Toast.makeText(context, "現在地の取得に失敗しました", Toast.LENGTH_SHORT).show()
+            }
+        } catch (_: SecurityException) {
+            viewModel.setFetchingLocation(false)
+            Toast.makeText(context, "位置情報の権限がありません", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        if (fineGranted || coarseGranted) {
+            fetchCurrentLocation()
+        } else {
+            Toast.makeText(context, "位置情報の利用が拒否されました", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun onRequestLocation() {
+        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (hasFine || hasCoarse) {
+            fetchCurrentLocation()
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -125,6 +222,17 @@ fun LocationListScreen(
                     )
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.toggleSearchOpen() }) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "検索",
+                            tint = if (isSearchOpen || searchQuery.isNotEmpty() || maxDistanceKm != null) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+                    }
                     IconButton(onClick = { WorkScheduler.runOnce(context) }) {
                         Icon(Icons.Default.PlayArrow, contentDescription = "今すぐ実行")
                     }
@@ -197,37 +305,240 @@ fun LocationListScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             // 星空背景
             StarryBackground()
-            
-            if (items.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                // 検索フィルターパネル
+                AnimatedVisibility(
+                    visible = isSearchOpen,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
                 ) {
-                    Text(
-                        "右下の + から監視地点を追加してください",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    SearchPanel(
+                        searchQuery = searchQuery,
+                        currentLocation = currentLocation,
+                        maxDistanceKm = maxDistanceKm,
+                        isFetchingLocation = isFetchingLocation,
+                        onQueryChange = { viewModel.updateSearchQuery(it) },
+                        onRequestLocation = { onRequestLocation() },
+                        onClearLocation = { viewModel.updateCurrentLocation(null) },
+                        onMaxDistanceChange = { viewModel.updateMaxDistanceKm(it) },
+                        onResetFilters = { viewModel.clearSearchFilter() }
                     )
                 }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
+
+                if (items.isEmpty()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (searchQuery.isNotEmpty() || maxDistanceKm != null) {
+                            Text(
+                                "検索条件に一致する地点が見つかりませんでした",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(onClick = { viewModel.clearSearchFilter() }) {
+                                Text("検索条件をクリア")
+                            }
+                        } else {
+                            Text(
+                                "右下の + から監視地点を追加してください",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(items, key = { it.location.id }) { item ->
+                            LocationCard(
+                                item = item,
+                                threshold = threshold,
+                                onOpenMap = { openGoogleMaps(context, item.location.lat, item.location.lon, item.location.name) },
+                                onEditClick = { onEditClick(item.location.id) },
+                                onDelete = { viewModel.delete(item.location) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchPanel(
+    searchQuery: String,
+    currentLocation: android.location.Location?,
+    maxDistanceKm: Double?,
+    isFetchingLocation: Boolean,
+    onQueryChange: (String) -> Unit,
+    onRequestLocation: () -> Unit,
+    onClearLocation: () -> Unit,
+    onMaxDistanceChange: (Double?) -> Unit,
+    onResetFilters: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+        tonalElevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // 地点名検索テキストフィールド
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("地点名で検索") },
+                placeholder = { Text("例: 東京、山頂") },
+                leadingIcon = {
+                    Icon(Icons.Default.Search, contentDescription = null)
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { onQueryChange("") }) {
+                            Icon(Icons.Default.Clear, contentDescription = "クリア")
+                        }
+                    }
+                },
+                singleLine = true
+            )
+
+            // 現在地取得セクション
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                OutlinedButton(
+                    onClick = onRequestLocation,
+                    enabled = !isFetchingLocation
                 ) {
-                    items(items, key = { it.location.id }) { item ->
-                        LocationCard(
-                            item = item,
-                            threshold = threshold,
-                            onOpenMap = { openGoogleMaps(context, item.location.lat, item.location.lon, item.location.name) },
-                            onEditClick = { onEditClick(item.location.id) },
-                            onDelete = { viewModel.delete(item.location) }
+                    if (isFetchingLocation) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("現在地取得中...")
+                    } else {
+                        Icon(
+                            Icons.Default.MyLocation,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (currentLocation != null) "現在地を更新" else "現在地を取得")
+                    }
+                }
+
+                if (currentLocation != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = String.format(
+                                Locale.JAPAN,
+                                "現在地: %.2f, %.2f",
+                                currentLocation.latitude,
+                                currentLocation.longitude
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        IconButton(
+                            onClick = onClearLocation,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "現在地を解除",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 距離制限（? km以内）絞り込み
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "現在地からの距離絞り込み",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (currentLocation == null) {
+                    Text(
+                        text = "※距離絞り込みを利用するには上の「現在地を取得」を押してください",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+
+                val distancePresets = listOf(null to "指定なし", 5.0 to "5km", 10.0 to "10km", 30.0 to "30km", 50.0 to "50km", 100.0 to "100km", 200.0 to "200km")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    distancePresets.forEach { (dist, label) ->
+                        val selected = (maxDistanceKm == dist)
+                        FilterChip(
+                            selected = selected,
+                            onClick = { onMaxDistanceChange(dist) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    OutlinedTextField(
+                        value = maxDistanceKm?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "",
+                        onValueChange = { text ->
+                            if (text.isEmpty()) {
+                                onMaxDistanceChange(null)
+                            } else {
+                                text.toDoubleOrNull()?.let { onMaxDistanceChange(it) }
+                            }
+                        },
+                        label = { Text("カスタム距離 (km)") },
+                        placeholder = { Text("例: 15") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        trailingIcon = {
+                            if (maxDistanceKm != null) {
+                                IconButton(onClick = { onMaxDistanceChange(null) }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "クリア")
+                                }
+                            }
+                        }
+                    )
+                    if (searchQuery.isNotEmpty() || maxDistanceKm != null || currentLocation != null) {
+                        TextButton(onClick = onResetFilters) {
+                            Text("リセット")
+                        }
                     }
                 }
             }
@@ -276,10 +587,27 @@ private fun LocationCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.location.name,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = item.location.name,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        if (item.distanceKm != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ) {
+                                Text(
+                                    text = String.format(Locale.JAPAN, "約%.1f km", item.distanceKm),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "緯度 ${item.location.lat}  経度 ${item.location.lon}  標高 ${item.location.alt}m",
@@ -367,7 +695,7 @@ private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
                         )
                         // 今日・明日の表示（端末の日付に合わせて動的に判定）
                         val now = java.time.LocalDate.now()
-                        
+
                         val label = when {
                             date == now -> "今日"
                             date == now.plusDays(1) -> "明日"

@@ -13,8 +13,8 @@ android {
         applicationId = "com.hoshizora.notifier"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.1.1"
+        versionCode = 5
+        versionName = "1.1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -90,6 +90,9 @@ dependencies {
 
     // WorkManager (毎日のバックグラウンド実行)
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+
+    // Location (現在地取得)
+    implementation("com.google.android.gms:play-services-location:21.0.1")
 
     // Retrofit + Moshi (星空指数APIの呼び出し)
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
