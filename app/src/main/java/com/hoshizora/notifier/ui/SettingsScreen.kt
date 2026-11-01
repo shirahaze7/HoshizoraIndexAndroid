@@ -2,14 +2,13 @@ package com.hoshizora.notifier.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -54,7 +53,7 @@ private val SELECTABLE_HOURS: List<Int> = (18..23) + (0..8)
 private fun hourLabel(hour: Int): String =
     if (hour in 0..8) "翌${hour}時" else "${hour}時"
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(onDone: () -> Unit) {
     val context = LocalContext.current
@@ -162,15 +161,14 @@ fun SettingsScreen(onDone: () -> Unit) {
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(5),
-                        modifier = Modifier.height(180.dp),
-                        userScrollEnabled = false
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(SELECTABLE_HOURS) { hour ->
+                        SELECTABLE_HOURS.forEach { hour ->
                             val isSelected = selectedHours.contains(hour)
                             FilterChip(
-                                modifier = Modifier.padding(2.dp),
                                 selected = isSelected,
                                 onClick = {
                                     selectedHours = if (isSelected) {

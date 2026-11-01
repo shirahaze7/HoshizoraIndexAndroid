@@ -2,6 +2,7 @@ package com.hoshizora.notifier.ui
 
 import android.content.Context
 import android.location.Location
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -21,12 +22,31 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Date
+import java.util.Locale
+
+/** 日付ごとのグループ化・事前フォーマット済みデータ */
+@Immutable
+data class FormattedGroupedResults(
+    val dateText: String,
+    val relativeDayLabel: String?,
+    val results: List<StarIndexResultEntity>
+)
 
 /** 地点情報と、その地点の直近取得結果(時間別)、および現在地からの距離(km)をまとめたもの */
+@Immutable
 data class LocationWithResults(
     val location: LocationEntity,
     val results: List<StarIndexResultEntity>,
-    val distanceKm: Double? = null
+    val groupedResults: List<FormattedGroupedResults> = emptyList(),
+    val fetchedAtText: String? = null,
+    val hasHighIndex: Boolean = false,
+    val distanceKm: Double? = null,
+    val distanceText: String? = null
 )
 
 class LocationListViewModel(context: Context) : ViewModel() {
@@ -55,6 +75,8 @@ class LocationListViewModel(context: Context) : ViewModel() {
     private val _isFetchingLocation = MutableStateFlow(false)
     val isFetchingLocation: StateFlow<Boolean> = _isFetchingLocation.asStateFlow()
 
+    private val dateFormatter = DateTimeFormatter.ofPattern("M/d(E)", Locale.JAPAN)
+
     val locationsWithResults: Flow<List<LocationWithResults>> =
         combine(
             locationDao.observeAll(),
@@ -63,7 +85,11 @@ class LocationListViewModel(context: Context) : ViewModel() {
             _currentLocation,
             _maxDistanceKm
         ) { locations, results, query, curLoc, maxDist ->
-            val grouped = results.groupBy { it.locationId }
+            val threshold = settingsRepository.threshold
+            val nowLocalDate = LocalDate.now()
+            val fetchedAtFormatter = SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN)
+            val groupedByLocId = results.groupBy { it.locationId }
+
             locations.mapNotNull { loc ->
                 // 地点名でフィルター（部分一致）
                 if (query.isNotBlank() && !loc.name.contains(query, ignoreCase = true)) {
@@ -80,10 +106,45 @@ class LocationListViewModel(context: Context) : ViewModel() {
                     return@mapNotNull null
                 }
 
+                val locResults = groupedByLocId[loc.id].orEmpty().sortedBy { it.datetime }
+                val hasHighIndex = locResults.any { it.index >= threshold }
+                val distanceText = distanceKm?.let { String.format(Locale.JAPAN, "約%.1f km", it) }
+                val fetchedAtText = locResults.firstOrNull()?.fetchedAt?.let { epochMillis ->
+                    fetchedAtFormatter.format(Date(epochMillis))
+                }
+
+                // 日付ごとにグループ化 & 事前フォーマット
+                val groupedMap = locResults.groupBy { result ->
+                    try {
+                        OffsetDateTime.parse(result.datetime).toLocalDate()
+                    } catch (_: Exception) {
+                        null
+                    }
+                }.toSortedMap(nullsLast(naturalOrder()))
+
+                val formattedGrouped = groupedMap.map { (date, itemsForDate) ->
+                    val dateText = date?.format(dateFormatter) ?: ""
+                    val relativeLabel = when (date) {
+                        nowLocalDate -> "今日"
+                        nowLocalDate.plusDays(1) -> "明日"
+                        nowLocalDate.plusDays(2) -> "明後日"
+                        else -> null
+                    }
+                    FormattedGroupedResults(
+                        dateText = dateText,
+                        relativeDayLabel = relativeLabel,
+                        results = itemsForDate
+                    )
+                }
+
                 LocationWithResults(
                     location = loc,
-                    results = grouped[loc.id].orEmpty().sortedBy { it.datetime },
-                    distanceKm = distanceKm
+                    results = locResults,
+                    groupedResults = formattedGrouped,
+                    fetchedAtText = fetchedAtText,
+                    hasHighIndex = hasHighIndex,
+                    distanceKm = distanceKm,
+                    distanceText = distanceText
                 )
             }.sortedWith(
                 compareByDescending<LocationWithResults> { item ->

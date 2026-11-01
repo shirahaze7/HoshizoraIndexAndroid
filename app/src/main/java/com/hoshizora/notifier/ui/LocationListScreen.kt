@@ -45,14 +45,12 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -98,10 +96,6 @@ import com.hoshizora.notifier.ui.theme.StarryBackground
 import com.hoshizora.notifier.worker.WorkScheduler
 import kotlinx.coroutines.launch
 import java.io.File
-import java.text.SimpleDateFormat
-import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
-import java.util.Date
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -123,7 +117,6 @@ fun LocationListScreen(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val threshold = remember { viewModel.getThreshold() }
 
     val fusedLocationClient = remember {
         LocationServices.getFusedLocationProviderClient(context)
@@ -283,14 +276,14 @@ fun LocationListScreen(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
-                    Icon(Icons.Default.Upload, contentDescription = "エクスポート")
+                    Icon(Icons.Default.Share, contentDescription = "エクスポート")
                 }
                 SmallFloatingActionButton(
                     onClick = { importLauncher.launch("application/json") },
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
-                    Icon(Icons.Default.Download, contentDescription = "インポート")
+                    Icon(Icons.Default.Add, contentDescription = "インポート")
                 }
                 FloatingActionButton(
                     onClick = onAddClick,
@@ -367,7 +360,6 @@ fun LocationListScreen(
                         ) { item ->
                             LocationCard(
                                 item = item,
-                                threshold = threshold,
                                 onOpenMap = { openGoogleMaps(context, item.location.lat, item.location.lon, item.location.name) },
                                 onEditClick = { onEditClick(item.location.id) },
                                 onDelete = { viewModel.delete(item.location) }
@@ -442,7 +434,7 @@ private fun SearchPanel(
                         Text("現在地取得中...")
                     } else {
                         Icon(
-                            Icons.Default.MyLocation,
+                            Icons.Default.LocationOn,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
@@ -553,17 +545,12 @@ private fun SearchPanel(
 @Composable
 private fun LocationCard(
     item: LocationWithResults,
-    threshold: Int,
     onOpenMap: () -> Unit,
     onEditClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val hasHighIndex = remember(item.results, threshold) {
-        item.results.any { it.index >= threshold }
-    }
-
     // グローエフェクトのアニメーション (hasHighIndex が true の時のみ動かす)
-    val glowAlpha = if (hasHighIndex) {
+    val glowAlpha = if (item.hasHighIndex) {
         val infiniteTransition = rememberInfiniteTransition(label = "cardGlow")
         val alphaState = infiniteTransition.animateFloat(
             initialValue = 0.5f,
@@ -579,20 +566,12 @@ private fun LocationCard(
         1f
     }
 
-    val cardBorder = remember(hasHighIndex, glowAlpha) {
-        if (hasHighIndex) {
+    val cardBorder = remember(item.hasHighIndex, glowAlpha) {
+        if (item.hasHighIndex) {
             BorderStroke(2.dp, SecondaryCyan.copy(alpha = glowAlpha))
         } else {
             BorderStroke(1.dp, DarkOutline.copy(alpha = 0.5f))
         }
-    }
-
-    val distanceText = remember(item.distanceKm) {
-        item.distanceKm?.let { String.format(Locale.JAPAN, "約%.1f km", it) }
-    }
-
-    val fetchedAtText = remember(item.results) {
-        item.results.firstOrNull()?.fetchedAt?.let { formatFetchedAt(it) }
     }
 
     Card(
@@ -615,7 +594,7 @@ private fun LocationCard(
                             text = item.location.name,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
-                        if (distanceText != null) {
+                        if (item.distanceText != null) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
@@ -623,7 +602,7 @@ private fun LocationCard(
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                             ) {
                                 Text(
-                                    text = distanceText,
+                                    text = item.distanceText,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -641,7 +620,7 @@ private fun LocationCard(
                 Row {
                     IconButton(onClick = onOpenMap) {
                         Icon(
-                            Icons.Default.Map,
+                            Icons.Default.LocationOn,
                             contentDescription = "Googleマップで開く",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -671,7 +650,7 @@ private fun LocationCard(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             } else {
-                fetchedAtText?.let {
+                item.fetchedAtText?.let {
                     Text(
                         text = "取得日時: $it",
                         style = MaterialTheme.typography.labelSmall,
@@ -679,7 +658,7 @@ private fun LocationCard(
                         modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
                     )
                 }
-                HourlyIndexList(item.results)
+                HourlyIndexList(item.groupedResults)
             }
         }
     }
@@ -687,55 +666,31 @@ private fun LocationCard(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("M/d(E)", Locale.JAPAN) }
-
-    // 日付ごとにグループ化（rememberで計算を一度に抑制）
-    val grouped = remember(results) {
-        results.groupBy { result ->
-            try {
-                OffsetDateTime.parse(result.datetime).toLocalDate()
-            } catch (_: Exception) {
-                null
-            }
-        }.toSortedMap(nullsLast(naturalOrder()))
-    }
-
-    val now = remember { java.time.LocalDate.now() }
-
+private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        grouped.forEach { (date, itemsForDate) ->
+        groupedResults.forEach { group ->
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (date != null) {
+                if (group.dateText.isNotEmpty()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = remember(date) { date.format(dateFormatter) },
+                            text = group.dateText,
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.primary
                         )
-                        // 今日・明日の表示（端末の日付に合わせて動的に判定）
-                        val label = remember(date, now) {
-                            when (date) {
-                                now -> "今日"
-                                now.plusDays(1) -> "明日"
-                                now.plusDays(2) -> "明後日"
-                                else -> null
-                            }
-                        }
-                        if (label != null) {
+                        if (group.relativeDayLabel != null) {
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                             ) {
                                 Text(
-                                    text = label,
+                                    text = group.relativeDayLabel,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 9.sp,
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
@@ -749,7 +704,7 @@ private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    itemsForDate.forEach { result ->
+                    group.results.forEach { result ->
                         IndexChip(result = result)
                     }
                 }
@@ -810,11 +765,6 @@ private fun IndexChip(result: StarIndexResultEntity) {
             )
         }
     }
-}
-
-private fun formatFetchedAt(epochMillis: Long): String {
-    val sdf = SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN)
-    return sdf.format(Date(epochMillis))
 }
 
 private fun openGoogleMaps(context: android.content.Context, lat: Double, lon: Double, name: String) {
