@@ -80,6 +80,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -592,7 +593,10 @@ private fun LocationCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = item.location.name,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         if (item.distanceText != null) {
                             Spacer(modifier = Modifier.width(8.dp))
@@ -605,6 +609,8 @@ private fun LocationCard(
                                     text = item.distanceText,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
