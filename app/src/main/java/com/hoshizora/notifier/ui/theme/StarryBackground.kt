@@ -12,7 +12,7 @@ import kotlin.random.Random
 data class Star(
     val position: Offset,
     val size: Float,
-    val twinkleSpeed: Float,
+    val twinkleFactor: Float,
     val initialPhase: Float
 )
 
@@ -20,20 +20,21 @@ data class Star(
 fun StarryBackground(modifier: Modifier = Modifier) {
     val stars = remember {
         List(100) {
+            val speed = Random.nextFloat() * 2000f + 1000f
             Star(
                 position = Offset(
                     x = Random.nextFloat(),
                     y = Random.nextFloat()
                 ),
                 size = Random.nextFloat() * 2.5f + 1f,
-                twinkleSpeed = Random.nextFloat() * 2000f + 1000f,
+                twinkleFactor = 3000f / speed,
                 initialPhase = Random.nextFloat() * 6.28f
             )
         }
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "starTwinkle")
-    val time by infiniteTransition.animateFloat(
+    val timeState = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 6.28f,
         animationSpec = infiniteRepeatable(
@@ -44,6 +45,7 @@ fun StarryBackground(modifier: Modifier = Modifier) {
     )
 
     Canvas(modifier = modifier.fillMaxSize()) {
+        val time = timeState.value
         val width = size.width
         val height = size.height
 
@@ -51,7 +53,7 @@ fun StarryBackground(modifier: Modifier = Modifier) {
             val x = star.position.x * width
             val y = star.position.y * height
             
-            val twinkle = kotlin.math.sin((time * (3000f / star.twinkleSpeed)) + star.initialPhase)
+            val twinkle = kotlin.math.sin((time * star.twinkleFactor) + star.initialPhase)
             val alpha = (0.2f + (twinkle + 1f) * 0.4f).coerceIn(0.2f, 1f)
             
             // 星のコア

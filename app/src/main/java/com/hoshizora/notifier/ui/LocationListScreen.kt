@@ -123,7 +123,7 @@ fun LocationListScreen(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val threshold = viewModel.getThreshold()
+    val threshold = remember { viewModel.getThreshold() }
 
     val fusedLocationClient = remember {
         LocationServices.getFusedLocationProviderClient(context)
@@ -360,7 +360,11 @@ fun LocationListScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(items, key = { it.location.id }) { item ->
+                        items(
+                            items = items,
+                            key = { it.location.id },
+                            contentType = { "location_card" }
+                        ) { item ->
                             LocationCard(
                                 item = item,
                                 threshold = threshold,
@@ -554,19 +558,42 @@ private fun LocationCard(
     onEditClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val hasHighIndex = item.results.any { it.index >= threshold }
+    val hasHighIndex = remember(item.results, threshold) {
+        item.results.any { it.index >= threshold }
+    }
 
-    // グローエフェクトのアニメーション
-    val infiniteTransition = rememberInfiniteTransition(label = "cardGlow")
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glowAlpha"
-    )
+    // グローエフェクトのアニメーション (hasHighIndex が true の時のみ動かす)
+    val glowAlpha = if (hasHighIndex) {
+        val infiniteTransition = rememberInfiniteTransition(label = "cardGlow")
+        val alphaState = infiniteTransition.animateFloat(
+            initialValue = 0.5f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "glowAlpha"
+        )
+        alphaState.value
+    } else {
+        1f
+    }
+
+    val cardBorder = remember(hasHighIndex, glowAlpha) {
+        if (hasHighIndex) {
+            BorderStroke(2.dp, SecondaryCyan.copy(alpha = glowAlpha))
+        } else {
+            BorderStroke(1.dp, DarkOutline.copy(alpha = 0.5f))
+        }
+    }
+
+    val distanceText = remember(item.distanceKm) {
+        item.distanceKm?.let { String.format(Locale.JAPAN, "約%.1f km", it) }
+    }
+
+    val fetchedAtText = remember(item.results) {
+        item.results.firstOrNull()?.fetchedAt?.let { formatFetchedAt(it) }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -574,11 +601,7 @@ private fun LocationCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
         ),
-        border = if (hasHighIndex) {
-            BorderStroke(2.dp, SecondaryCyan.copy(alpha = glowAlpha))  // 高指数時は脈動するシアン
-        } else {
-            BorderStroke(1.dp, DarkOutline.copy(alpha = 0.5f))  // 通常時は星の輝きのような青紫
-        }
+        border = cardBorder
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -592,7 +615,7 @@ private fun LocationCard(
                             text = item.location.name,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
-                        if (item.distanceKm != null) {
+                        if (distanceText != null) {
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
@@ -600,7 +623,7 @@ private fun LocationCard(
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                             ) {
                                 Text(
-                                    text = String.format(Locale.JAPAN, "約%.1f km", item.distanceKm),
+                                    text = distanceText,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -648,10 +671,9 @@ private fun LocationCard(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             } else {
-                val fetchedAt = item.results.firstOrNull()?.fetchedAt
-                if (fetchedAt != null) {
+                fetchedAtText?.let {
                     Text(
-                        text = "取得日時: ${formatFetchedAt(fetchedAt)}",
+                        text = "取得日時: $it",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
@@ -668,14 +690,18 @@ private fun LocationCard(
 private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
     val dateFormatter = remember { DateTimeFormatter.ofPattern("M/d(E)", Locale.JAPAN) }
 
-    // 日付ごとにグループ化（sortedされたMapを使用）
-    val grouped = results.groupBy { result ->
-        try {
-            OffsetDateTime.parse(result.datetime).toLocalDate()
-        } catch (_: Exception) {
-            null
-        }
-    }.toSortedMap(nullsLast(naturalOrder()))
+    // 日付ごとにグループ化（rememberで計算を一度に抑制）
+    val grouped = remember(results) {
+        results.groupBy { result ->
+            try {
+                OffsetDateTime.parse(result.datetime).toLocalDate()
+            } catch (_: Exception) {
+                null
+            }
+        }.toSortedMap(nullsLast(naturalOrder()))
+    }
+
+    val now = remember { java.time.LocalDate.now() }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -689,18 +715,18 @@ private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = date.format(dateFormatter),
+                            text = remember(date) { date.format(dateFormatter) },
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.primary
                         )
                         // 今日・明日の表示（端末の日付に合わせて動的に判定）
-                        val now = java.time.LocalDate.now()
-
-                        val label = when {
-                            date == now -> "今日"
-                            date == now.plusDays(1) -> "明日"
-                            date == now.plusDays(2) -> "明後日"
-                            else -> null
+                        val label = remember(date, now) {
+                            when (date) {
+                                now -> "今日"
+                                now.plusDays(1) -> "明日"
+                                now.plusDays(2) -> "明後日"
+                                else -> null
+                            }
                         }
                         if (label != null) {
                             Surface(
@@ -738,26 +764,33 @@ private fun IndexChip(result: StarIndexResultEntity) {
     val bgColor = StarIndexColors.getBackgroundColor(index)
     val textColor = StarIndexColors.getTextColor(index)
 
-    // 高指数時にチップを脈動させる
+    // 高指数(★3以上)の時のみパルスアニメーションを実行
     val shouldPulse = index >= 3
-    val infiniteTransition = rememberInfiniteTransition(label = "chipPulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (shouldPulse) 1.05f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
+    val pulseScaleState = if (shouldPulse) {
+        val infiniteTransition = rememberInfiniteTransition(label = "chipPulse")
+        infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.05f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulseScale"
+        )
+    } else {
+        null
+    }
 
     Surface(
         shape = RoundedCornerShape(6.dp),
         color = bgColor,
         contentColor = textColor,
         modifier = Modifier.graphicsLayer {
-            scaleX = pulseScale
-            scaleY = pulseScale
+            if (pulseScaleState != null) {
+                val scale = pulseScaleState.value
+                scaleX = scale
+                scaleY = scale
+            }
         }
     ) {
         Column(

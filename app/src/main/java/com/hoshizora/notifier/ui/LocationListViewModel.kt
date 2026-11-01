@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -95,7 +96,7 @@ class LocationListViewModel(context: Context) : ViewModel() {
                     item.location.id
                 }
             )
-        }
+        }.flowOn(Dispatchers.Default)
 
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
