@@ -70,9 +70,7 @@ kotlin {
 
 dependencies {
     // Compose BOM (ビルドプラットフォーム定義)
-    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
-    implementation(composeBom)
-    androidTestImplementation(composeBom)
+    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
 
     // AGP 8.5.2 との互換性およびアプリ動作安定性を考慮し、最適なバージョンで固定
     implementation("androidx.core:core-ktx:1.15.0")
