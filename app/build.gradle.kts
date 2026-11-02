@@ -97,7 +97,9 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
     // Retrofit + Moshi (2.x 系最新安定バージョン 2.11.0 で固定)
+    //noinspection NewerVersionAvailable
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    //noinspection NewerVersionAvailable
     implementation("com.squareup.retrofit2:converter-moshi:2.11.0")
     implementation("com.squareup.moshi:moshi-kotlin:1.15.2")
     ksp("com.squareup.moshi:moshi-kotlin-codegen:1.15.2")
