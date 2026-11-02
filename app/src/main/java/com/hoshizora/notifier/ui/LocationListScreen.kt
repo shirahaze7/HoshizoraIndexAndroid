@@ -41,7 +41,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -55,6 +57,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -73,8 +77,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -89,6 +95,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.hoshizora.notifier.data.LocationSortOption
 import com.hoshizora.notifier.data.StarIndexResultEntity
 import com.hoshizora.notifier.ui.theme.DarkOutline
 import com.hoshizora.notifier.ui.theme.SecondaryCyan
@@ -115,6 +122,8 @@ fun LocationListScreen(
     val maxDistanceKm by viewModel.maxDistanceKm.collectAsState()
     val isSearchOpen by viewModel.isSearchOpen.collectAsState()
     val isFetchingLocation by viewModel.isFetchingLocation.collectAsState()
+    val selectedSortOption by viewModel.sortOption.collectAsState()
+    var sortMenuExpanded by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -216,6 +225,53 @@ fun LocationListScreen(
                     )
                 },
                 actions = {
+                    Box {
+                        IconButton(onClick = { sortMenuExpanded = true }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Sort,
+                                contentDescription = "並び替え"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = sortMenuExpanded,
+                            onDismissRequest = { sortMenuExpanded = false }
+                        ) {
+                            LocationSortOption.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            if (option == selectedSortOption) {
+                                                Icon(
+                                                    Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            } else {
+                                                Spacer(modifier = Modifier.size(18.dp))
+                                            }
+                                            Text(
+                                                text = option.displayName,
+                                                color = if (option == selectedSortOption) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurface
+                                                },
+                                                fontWeight = if (option == selectedSortOption) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.updateSortOption(option)
+                                        sortMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     IconButton(onClick = { viewModel.toggleSearchOpen() }) {
                         Icon(
                             Icons.Default.Search,

@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.hoshizora.notifier.data.AppDatabase
 import com.hoshizora.notifier.data.LocationEntity
+import com.hoshizora.notifier.data.LocationSortOption
 import com.hoshizora.notifier.data.SettingsRepository
 import com.hoshizora.notifier.data.StarIndexResultEntity
 import com.squareup.moshi.Moshi
@@ -49,6 +50,21 @@ data class LocationWithResults(
     val distanceText: String? = null
 )
 
+private data class FilterAndSortState(
+    val query: String,
+    val currentLocation: Location?,
+    val maxDistanceKm: Double?,
+    val sortOption: LocationSortOption
+)
+
+private fun parseOffsetDateTimeOrNull(datetime: String): OffsetDateTime? {
+    return try {
+        OffsetDateTime.parse(datetime)
+    } catch (_: Exception) {
+        null
+    }
+}
+
 class LocationListViewModel(context: Context) : ViewModel() {
 
     private val locationDao = AppDatabase.getInstance(context).locationDao()
@@ -75,16 +91,27 @@ class LocationListViewModel(context: Context) : ViewModel() {
     private val _isFetchingLocation = MutableStateFlow(false)
     val isFetchingLocation: StateFlow<Boolean> = _isFetchingLocation.asStateFlow()
 
+    private val _sortOption = MutableStateFlow(settingsRepository.sortOption)
+    val sortOption: StateFlow<LocationSortOption> = _sortOption.asStateFlow()
+
     private val dateFormatter = DateTimeFormatter.ofPattern("M/d(E)", Locale.JAPAN)
+
+    private val filterAndSortState: Flow<FilterAndSortState> =
+        combine(_searchQuery, _currentLocation, _maxDistanceKm, _sortOption) { query, curLoc, maxDist, sortOpt ->
+            FilterAndSortState(query, curLoc, maxDist, sortOpt)
+        }
 
     val locationsWithResults: Flow<List<LocationWithResults>> =
         combine(
             locationDao.observeAll(),
             resultDao.observeAll(),
-            _searchQuery,
-            _currentLocation,
-            _maxDistanceKm
-        ) { locations, results, query, curLoc, maxDist ->
+            filterAndSortState
+        ) { locations, results, filterAndSort ->
+            val query = filterAndSort.query
+            val curLoc = filterAndSort.currentLocation
+            val maxDist = filterAndSort.maxDistanceKm
+            val sortOpt = filterAndSort.sortOption
+
             val threshold = settingsRepository.threshold
             val nowLocalDate = LocalDate.now()
             val fetchedAtFormatter = SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN)
@@ -146,18 +173,95 @@ class LocationListViewModel(context: Context) : ViewModel() {
                     distanceKm = distanceKm,
                     distanceText = distanceText
                 )
-            }.sortedWith(
-                compareByDescending<LocationWithResults> { item ->
-                    // 星空指数の最大値が高い地点を上位に表示（データがない場合は -1）
-                    item.results.maxOfOrNull { it.index } ?: -1
-                }.thenBy { item ->
-                    // 距離がある場合は近い順、なければID順
-                    item.distanceKm ?: Double.MAX_VALUE
-                }.thenBy { item ->
-                    item.location.id
+            }.sortedWith { a, b ->
+                when (sortOpt) {
+                    LocationSortOption.REGISTERED -> {
+                        a.location.id.compareTo(b.location.id)
+                    }
+                    LocationSortOption.STAR_INDEX -> {
+                        // これからの星空指数で判定（過去の時刻は考慮から外して今夜〜今後の見えやすさを重視）
+                        val now = OffsetDateTime.now()
+                        val cutoff = now.minusHours(1)
+
+                        val aFutureResults = a.results.filter { result ->
+                            try {
+                                val dt = OffsetDateTime.parse(result.datetime)
+                                !dt.isBefore(cutoff)
+                            } catch (_: Exception) {
+                                true
+                            }
+                        }
+                        val bFutureResults = b.results.filter { result ->
+                            try {
+                                val dt = OffsetDateTime.parse(result.datetime)
+                                !dt.isBefore(cutoff)
+                            } catch (_: Exception) {
+                                true
+                            }
+                        }
+
+                        // 1. これからの最高指数 (高い順)
+                        val aMax = aFutureResults.maxOfOrNull { it.index } ?: -1
+                        val bMax = bFutureResults.maxOfOrNull { it.index } ?: -1
+                        if (aMax != bMax) {
+                            return@sortedWith bMax.compareTo(aMax)
+                        }
+
+                        // 2. 最高指数に達する最速の日時 (より早く綺麗な星空が見られる地点優先)
+                        val aEarliestMaxDt = aFutureResults
+                            .filter { it.index == aMax }
+                            .minOfOrNull { parseOffsetDateTimeOrNull(it.datetime) ?: OffsetDateTime.MAX }
+                            ?: OffsetDateTime.MAX
+                        val bEarliestMaxDt = bFutureResults
+                            .filter { it.index == bMax }
+                            .minOfOrNull { parseOffsetDateTimeOrNull(it.datetime) ?: OffsetDateTime.MAX }
+                            ?: OffsetDateTime.MAX
+                        if (aEarliestMaxDt != bEarliestMaxDt) {
+                            return@sortedWith aEarliestMaxDt.compareTo(bEarliestMaxDt)
+                        }
+
+                        // 3. これからの平均指数 (高い順)
+                        val aAvg = if (aFutureResults.isNotEmpty()) aFutureResults.map { it.index }.average() else -1.0
+                        val bAvg = if (bFutureResults.isNotEmpty()) bFutureResults.map { it.index }.average() else -1.0
+                        if (aAvg != bAvg) {
+                            return@sortedWith bAvg.compareTo(aAvg)
+                        }
+
+                        // 4. 現在地からの距離 (近い順)
+                        val aDist = a.distanceKm ?: Double.MAX_VALUE
+                        val bDist = b.distanceKm ?: Double.MAX_VALUE
+                        if (aDist != bDist) {
+                            return@sortedWith aDist.compareTo(bDist)
+                        }
+
+                        // 5. 地点ID順
+                        a.location.id.compareTo(b.location.id)
+                    }
+                    LocationSortOption.DISTANCE -> {
+                        val aDist = a.distanceKm ?: Double.MAX_VALUE
+                        val bDist = b.distanceKm ?: Double.MAX_VALUE
+                        if (aDist != bDist) {
+                            aDist.compareTo(bDist)
+                        } else {
+                            a.location.id.compareTo(b.location.id)
+                        }
+                    }
+                    LocationSortOption.NAME -> {
+                        val nameCompare = a.location.name.compareTo(b.location.name, ignoreCase = true)
+                        if (nameCompare != 0) {
+                            nameCompare
+                        } else {
+                            a.location.id.compareTo(b.location.id)
+                        }
+                    }
                 }
-            )
+            }
         }.flowOn(Dispatchers.Default)
+
+    fun updateSortOption(option: LocationSortOption) {
+        _sortOption.value = option
+        settingsRepository.sortOption = option
+    }
 
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query

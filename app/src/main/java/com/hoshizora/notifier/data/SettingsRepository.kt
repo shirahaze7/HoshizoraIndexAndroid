@@ -3,6 +3,13 @@ package com.hoshizora.notifier.data
 import android.content.Context
 import androidx.core.content.edit
 
+enum class LocationSortOption(val displayName: String) {
+    REGISTERED("登録順"),
+    STAR_INDEX("星空指数順"),
+    DISTANCE("距離順"),
+    NAME("名称順")
+}
+
 /**
  * しきい値・対象時間帯・実行時刻などのアプリ設定を SharedPreferences で保存する。
  */
@@ -44,6 +51,17 @@ class SettingsRepository(context: Context) {
         get() = prefs.getInt(KEY_FETCH_HOURS, DEFAULT_FETCH_HOURS)
         set(value) = prefs.edit { putInt(KEY_FETCH_HOURS, value) }
 
+    var sortOption: LocationSortOption
+        get() {
+            val name = prefs.getString(KEY_SORT_OPTION, LocationSortOption.REGISTERED.name)
+            return try {
+                LocationSortOption.valueOf(name ?: LocationSortOption.REGISTERED.name)
+            } catch (_: Exception) {
+                LocationSortOption.REGISTERED
+            }
+        }
+        set(value) = prefs.edit { putString(KEY_SORT_OPTION, value.name) }
+
     companion object {
         private const val KEY_THRESHOLD = "threshold"
         private const val KEY_TARGET_HOURS = "target_hours"
@@ -51,6 +69,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_RUN_MINUTE = "run_minute"
         private const val KEY_NOTIFY_WHEN_NONE = "notify_when_none"
         private const val KEY_FETCH_HOURS = "fetch_hours"
+        private const val KEY_SORT_OPTION = "sort_option"
 
         const val DEFAULT_THRESHOLD = 2
         const val DEFAULT_TARGET_HOURS = "20,21,22,23,0,1,2"
