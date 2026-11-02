@@ -10,6 +10,9 @@ import com.hoshizora.notifier.data.StarIndexResultEntity
 import com.hoshizora.notifier.network.RetrofitClient
 import com.hoshizora.notifier.notification.NotificationHelper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -32,6 +35,11 @@ class StarIndexCheckWorker(
         val datetime: String?,
     )
 
+    private data class FetchLocationResult(
+        val location: LocationEntity,
+        val hourlyResults: List<StarIndexResultEntity>?
+    )
+
     override suspend fun doWork(): Result {
         return withContext(Dispatchers.IO) {
             try {
@@ -49,11 +57,22 @@ class StarIndexCheckWorker(
                 val fetchedAt = System.currentTimeMillis()
                 val fetchHours = settings.fetchHours
 
+                // 全地点のAPIデータを非同期並列で一括取得
+                val fetchResults = coroutineScope {
+                    locations.map { loc ->
+                        async {
+                            val hourlyResults = fetchHourlyResults(loc, today, targetHours, fetchedAt, fetchHours)
+                            FetchLocationResult(loc, hourlyResults)
+                        }
+                    }.awaitAll()
+                }
+
                 val visible = mutableListOf<NotifyResult>()
                 val checked = mutableListOf<Pair<String, Int?>>()
 
-                for (loc in locations) {
-                    val hourlyResults = fetchHourlyResults(loc, today, targetHours, fetchedAt, fetchHours)
+                for (fetchResult in fetchResults) {
+                    val loc = fetchResult.location
+                    val hourlyResults = fetchResult.hourlyResults
 
                     if (hourlyResults == null) {
                         checked.add(loc.name to null)
@@ -117,17 +136,11 @@ class StarIndexCheckWorker(
         val entries = response.resultList.data
         if (entries.isEmpty()) return null
 
-        // デバッグ: APIから返されたデータの範囲を確認
-        android.util.Log.d("StarIndexWorker", "API returned ${entries.size} day entries for location ${loc.name}")
-        entries.forEach { entry ->
-            android.util.Log.d("StarIndexWorker", "  Day: ${entry.startDatetime} to ${entry.endDatetime}, hours: ${entry.starlightIndex.size}")
-        }
-
         // 現在時刻以降、指定時間数以内のデータのみを表示
         val now = OffsetDateTime.now()
         val cutoffStart = now
         val cutoffEnd = now.plusHours(fetchHours.toLong())
-        
+
         val results = mutableListOf<StarIndexResultEntity>()
 
         for (entry in entries) {

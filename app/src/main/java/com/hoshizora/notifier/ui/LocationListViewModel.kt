@@ -11,9 +11,9 @@ import com.hoshizora.notifier.data.LocationEntity
 import com.hoshizora.notifier.data.LocationSortOption
 import com.hoshizora.notifier.data.SettingsRepository
 import com.hoshizora.notifier.data.StarIndexResultEntity
+import com.hoshizora.notifier.data.UserSettings
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,12 +23,20 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
+import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Date
 import java.util.Locale
+
+/** パース済みで軽量比較が可能なエンティティラッパー */
+@Immutable
+data class ParsedStarIndexResult(
+    val entity: StarIndexResultEntity,
+    val parsedDateTime: OffsetDateTime?,
+    val localDate: LocalDate?
+)
 
 /** 日付ごとのグループ化・事前フォーマット済みデータ */
 @Immutable
@@ -54,16 +62,8 @@ private data class FilterAndSortState(
     val query: String,
     val currentLocation: Location?,
     val maxDistanceKm: Double?,
-    val sortOption: LocationSortOption
+    val userSettings: UserSettings
 )
-
-private fun parseOffsetDateTimeOrNull(datetime: String): OffsetDateTime? {
-    return try {
-        OffsetDateTime.parse(datetime)
-    } catch (_: Exception) {
-        null
-    }
-}
 
 class LocationListViewModel(context: Context) : ViewModel() {
 
@@ -71,7 +71,7 @@ class LocationListViewModel(context: Context) : ViewModel() {
     private val resultDao = AppDatabase.getInstance(context).starIndexResultDao()
     private val settingsRepository = SettingsRepository(context)
 
-    private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    private val moshi = Moshi.Builder().build()
     private val listType = Types.newParameterizedType(List::class.java, LocationEntity::class.java)
     private val adapter = moshi.adapter<List<LocationEntity>>(listType)
 
@@ -91,14 +91,20 @@ class LocationListViewModel(context: Context) : ViewModel() {
     private val _isFetchingLocation = MutableStateFlow(false)
     val isFetchingLocation: StateFlow<Boolean> = _isFetchingLocation.asStateFlow()
 
+    // リアルタイム設定Flow
+    val userSettings: Flow<UserSettings> = settingsRepository.settingsFlow
+
     private val _sortOption = MutableStateFlow(settingsRepository.sortOption)
     val sortOption: StateFlow<LocationSortOption> = _sortOption.asStateFlow()
 
     private val dateFormatter = DateTimeFormatter.ofPattern("M/d(E)", Locale.JAPAN)
+    private val fetchedAtFormatter = DateTimeFormatter.ofPattern("MM/dd HH:mm", Locale.JAPAN)
+        .withZone(ZoneId.systemDefault())
 
     private val filterAndSortState: Flow<FilterAndSortState> =
-        combine(_searchQuery, _currentLocation, _maxDistanceKm, _sortOption) { query, curLoc, maxDist, sortOpt ->
-            FilterAndSortState(query, curLoc, maxDist, sortOpt)
+        combine(_searchQuery, _currentLocation, _maxDistanceKm, userSettings) { query, curLoc, maxDist, settings ->
+            _sortOption.value = settings.sortOption
+            FilterAndSortState(query, curLoc, maxDist, settings)
         }
 
     val locationsWithResults: Flow<List<LocationWithResults>> =
@@ -110,12 +116,29 @@ class LocationListViewModel(context: Context) : ViewModel() {
             val query = filterAndSort.query
             val curLoc = filterAndSort.currentLocation
             val maxDist = filterAndSort.maxDistanceKm
-            val sortOpt = filterAndSort.sortOption
+            val settings = filterAndSort.userSettings
+            val sortOpt = settings.sortOption
+            val threshold = settings.threshold
 
-            val threshold = settingsRepository.threshold
             val nowLocalDate = LocalDate.now()
-            val fetchedAtFormatter = SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN)
-            val groupedByLocId = results.groupBy { it.locationId }
+            val nowOffsetDateTime = OffsetDateTime.now()
+            val cutoff = nowOffsetDateTime.minusHours(1)
+
+            // 各エンティティのパースを一括事前計算 (O(N) 1回のみ)
+            val parsedResultsGrouped = results.groupBy { it.locationId }.mapValues { (_, list) ->
+                list.map { entity ->
+                    val parsedDt = try {
+                        OffsetDateTime.parse(entity.datetime)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    ParsedStarIndexResult(
+                        entity = entity,
+                        parsedDateTime = parsedDt,
+                        localDate = parsedDt?.toLocalDate()
+                    )
+                }.sortedWith(compareBy(nullsLast()) { it.parsedDateTime })
+            }
 
             locations.mapNotNull { loc ->
                 // 地点名でフィルター（部分一致）
@@ -133,21 +156,18 @@ class LocationListViewModel(context: Context) : ViewModel() {
                     return@mapNotNull null
                 }
 
-                val locResults = groupedByLocId[loc.id].orEmpty().sortedBy { it.datetime }
-                val hasHighIndex = locResults.any { it.index >= threshold }
+                val parsedLocResults = parsedResultsGrouped[loc.id].orEmpty()
+                val locEntities = parsedLocResults.map { it.entity }
+
+                val hasHighIndex = locEntities.any { it.index >= threshold }
                 val distanceText = distanceKm?.let { String.format(Locale.JAPAN, "約%.1f km", it) }
-                val fetchedAtText = locResults.firstOrNull()?.fetchedAt?.let { epochMillis ->
-                    fetchedAtFormatter.format(Date(epochMillis))
+                val fetchedAtText = locEntities.firstOrNull()?.fetchedAt?.let { epochMillis ->
+                    fetchedAtFormatter.format(Instant.ofEpochMilli(epochMillis))
                 }
 
-                // 日付ごとにグループ化 & 事前フォーマット
-                val groupedMap = locResults.groupBy { result ->
-                    try {
-                        OffsetDateTime.parse(result.datetime).toLocalDate()
-                    } catch (_: Exception) {
-                        null
-                    }
-                }.toSortedMap(nullsLast(naturalOrder()))
+                // 事前パース結果を使ったグループ化
+                val groupedMap = parsedLocResults.groupBy { it.localDate }
+                    .toSortedMap(nullsLast(naturalOrder()))
 
                 val formattedGrouped = groupedMap.map { (date, itemsForDate) ->
                     val dateText = date?.format(dateFormatter) ?: ""
@@ -160,69 +180,59 @@ class LocationListViewModel(context: Context) : ViewModel() {
                     FormattedGroupedResults(
                         dateText = dateText,
                         relativeDayLabel = relativeLabel,
-                        results = itemsForDate
+                        results = itemsForDate.map { it.entity }
                     )
                 }
 
-                LocationWithResults(
-                    location = loc,
-                    results = locResults,
-                    groupedResults = formattedGrouped,
-                    fetchedAtText = fetchedAtText,
-                    hasHighIndex = hasHighIndex,
-                    distanceKm = distanceKm,
-                    distanceText = distanceText
+                Pair(
+                    LocationWithResults(
+                        location = loc,
+                        results = locEntities,
+                        groupedResults = formattedGrouped,
+                        fetchedAtText = fetchedAtText,
+                        hasHighIndex = hasHighIndex,
+                        distanceKm = distanceKm,
+                        distanceText = distanceText
+                    ),
+                    parsedLocResults
                 )
-            }.sortedWith { a, b ->
+            }.sortedWith { aPair, bPair ->
+                val a = aPair.first
+                val b = bPair.first
+                val aParsed = aPair.second
+                val bParsed = bPair.second
+
                 when (sortOpt) {
                     LocationSortOption.REGISTERED -> {
                         a.location.id.compareTo(b.location.id)
                     }
                     LocationSortOption.STAR_INDEX -> {
-                        // これからの星空指数で判定（過去の時刻は考慮から外して今夜〜今後の見えやすさを重視）
-                        val now = OffsetDateTime.now()
-                        val cutoff = now.minusHours(1)
-
-                        val aFutureResults = a.results.filter { result ->
-                            try {
-                                val dt = OffsetDateTime.parse(result.datetime)
-                                !dt.isBefore(cutoff)
-                            } catch (_: Exception) {
-                                true
-                            }
-                        }
-                        val bFutureResults = b.results.filter { result ->
-                            try {
-                                val dt = OffsetDateTime.parse(result.datetime)
-                                !dt.isBefore(cutoff)
-                            } catch (_: Exception) {
-                                true
-                            }
-                        }
+                        val aFuture = aParsed.filter { it.parsedDateTime == null || !it.parsedDateTime.isBefore(cutoff) }
+                        val bFuture = bParsed.filter { it.parsedDateTime == null || !it.parsedDateTime.isBefore(cutoff) }
 
                         // 1. これからの最高指数 (高い順)
-                        val aMax = aFutureResults.maxOfOrNull { it.index } ?: -1
-                        val bMax = bFutureResults.maxOfOrNull { it.index } ?: -1
+                        val aMax = aFuture.maxOfOrNull { it.entity.index } ?: -1
+                        val bMax = bFuture.maxOfOrNull { it.entity.index } ?: -1
                         if (aMax != bMax) {
                             return@sortedWith bMax.compareTo(aMax)
                         }
 
                         // 2. 最高指数に達する最速の日時 (より早く綺麗な星空が見られる地点優先)
-                        val aEarliestMaxDt = aFutureResults
-                            .filter { it.index == aMax }
-                            .minOfOrNull { parseOffsetDateTimeOrNull(it.datetime) ?: OffsetDateTime.MAX }
+                        val aEarliestMaxDt = aFuture
+                            .filter { it.entity.index == aMax }
+                            .minOfOrNull { it.parsedDateTime ?: OffsetDateTime.MAX }
                             ?: OffsetDateTime.MAX
-                        val bEarliestMaxDt = bFutureResults
-                            .filter { it.index == bMax }
-                            .minOfOrNull { parseOffsetDateTimeOrNull(it.datetime) ?: OffsetDateTime.MAX }
+                        val bEarliestMaxDt = bFuture
+                            .filter { it.entity.index == bMax }
+                            .minOfOrNull { it.parsedDateTime ?: OffsetDateTime.MAX }
                             ?: OffsetDateTime.MAX
                         if (aEarliestMaxDt != bEarliestMaxDt) {
                             return@sortedWith aEarliestMaxDt.compareTo(bEarliestMaxDt)
                         }
 
                         // 3. これからの平均指数 (高い順)
-                        val aAvg = if (aFutureResults.isNotEmpty()) aFutureResults.map { it.index }.average() else -1.0
-                        val bAvg = if (bFutureResults.isNotEmpty()) bFutureResults.map { it.index }.average() else -1.0
+                        val aAvg = if (aFuture.isNotEmpty()) aFuture.map { it.entity.index }.average() else -1.0
+                        val bAvg = if (bFuture.isNotEmpty()) bFuture.map { it.entity.index }.average() else -1.0
                         if (aAvg != bAvg) {
                             return@sortedWith bAvg.compareTo(aAvg)
                         }
@@ -255,7 +265,7 @@ class LocationListViewModel(context: Context) : ViewModel() {
                         }
                     }
                 }
-            }
+            }.map { it.first }
         }.flowOn(Dispatchers.Default)
 
     fun updateSortOption(option: LocationSortOption) {
@@ -275,10 +285,6 @@ class LocationListViewModel(context: Context) : ViewModel() {
         _isSearchOpen.value = !_isSearchOpen.value
     }
 
-    fun setSearchOpen(isOpen: Boolean) {
-        _isSearchOpen.value = isOpen
-    }
-
     fun updateCurrentLocation(location: Location?) {
         _currentLocation.value = location
     }
@@ -291,8 +297,6 @@ class LocationListViewModel(context: Context) : ViewModel() {
         _searchQuery.value = ""
         _maxDistanceKm.value = null
     }
-
-    fun getThreshold(): Int = settingsRepository.threshold
 
     fun delete(location: LocationEntity) {
         viewModelScope.launch { locationDao.delete(location) }

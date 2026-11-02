@@ -2,12 +2,14 @@ package com.hoshizora.notifier.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.squareup.moshi.JsonClass
 
 /**
  * 監視対象の地点。
  * lat/lon/alt は、お天気ナビゲータのサイトで地点検索したときの
  * APIレスポンス(pref/name/lat/lon/alt)を参照して入力する。
  */
+@JsonClass(generateAdapter = true)
 @Entity(tableName = "locations")
 data class LocationEntity(
     @PrimaryKey(autoGenerate = true)

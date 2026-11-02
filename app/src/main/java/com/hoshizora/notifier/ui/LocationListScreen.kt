@@ -19,7 +19,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -83,6 +82,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -606,10 +610,11 @@ private fun LocationCard(
     onEditClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    // グローエフェクトのアニメーション (hasHighIndex が true の時のみ動かす)
-    val glowAlpha = if (item.hasHighIndex) {
+    // 高指数(hasHighIndex)の場合のアルファアニメーション
+    // state を Draw フェーズ(drawWithContent)でのみ参照することで、Recomposition をゼロに抑える！
+    val borderAlphaState = if (item.hasHighIndex) {
         val infiniteTransition = rememberInfiniteTransition(label = "cardGlow")
-        val alphaState = infiniteTransition.animateFloat(
+        infiniteTransition.animateFloat(
             initialValue = 0.5f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
@@ -618,26 +623,35 @@ private fun LocationCard(
             ),
             label = "glowAlpha"
         )
-        alphaState.value
     } else {
-        1f
+        null
     }
 
-    val cardBorder = remember(item.hasHighIndex, glowAlpha) {
-        if (item.hasHighIndex) {
-            BorderStroke(2.dp, SecondaryCyan.copy(alpha = glowAlpha))
-        } else {
-            BorderStroke(1.dp, DarkOutline.copy(alpha = 0.5f))
-        }
-    }
+    val hasHighIndex = item.hasHighIndex
+    val cornerRadius = 12.dp
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .drawWithContent {
+                drawContent()
+                val strokeWidth = if (hasHighIndex) 2.dp.toPx() else 1.dp.toPx()
+                val alpha = borderAlphaState?.value ?: 1f
+                val color = if (hasHighIndex) SecondaryCyan.copy(alpha = alpha) else DarkOutline.copy(alpha = 0.5f)
+                val halfStroke = strokeWidth / 2f
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(halfStroke, halfStroke),
+                    size = Size(size.width - strokeWidth, size.height - strokeWidth),
+                    cornerRadius = CornerRadius(cornerRadius.toPx()),
+                    style = Stroke(width = strokeWidth)
+                )
+            },
+        shape = RoundedCornerShape(cornerRadius),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
         ),
-        border = cardBorder
+        border = null
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -796,11 +810,9 @@ private fun IndexChip(result: StarIndexResultEntity) {
         color = bgColor,
         contentColor = textColor,
         modifier = Modifier.graphicsLayer {
-            if (pulseScaleState != null) {
-                val scale = pulseScaleState.value
-                scaleX = scale
-                scaleY = scale
-            }
+            val scale = pulseScaleState?.value ?: 1f
+            scaleX = scale
+            scaleY = scale
         }
     ) {
         Column(
