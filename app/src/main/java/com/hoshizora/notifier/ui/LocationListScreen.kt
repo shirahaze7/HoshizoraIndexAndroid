@@ -1,19 +1,25 @@
 package com.hoshizora.notifier.ui
 
+import android.Manifest
 import android.content.ClipData
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.core.net.toUri
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,45 +32,74 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.hoshizora.notifier.data.LocationSortOption
 import com.hoshizora.notifier.data.StarIndexResultEntity
 import com.hoshizora.notifier.ui.theme.DarkOutline
 import com.hoshizora.notifier.ui.theme.SecondaryCyan
@@ -73,10 +108,6 @@ import com.hoshizora.notifier.ui.theme.StarryBackground
 import com.hoshizora.notifier.worker.WorkScheduler
 import kotlinx.coroutines.launch
 import java.io.File
-import java.text.SimpleDateFormat
-import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
-import java.util.Date
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,9 +121,82 @@ fun LocationListScreen(
     )
 ) {
     val items by viewModel.locationsWithResults.collectAsState(initial = emptyList())
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val currentLocation by viewModel.currentLocation.collectAsState()
+    val maxDistanceKm by viewModel.maxDistanceKm.collectAsState()
+    val isSearchOpen by viewModel.isSearchOpen.collectAsState()
+    val isFetchingLocation by viewModel.isFetchingLocation.collectAsState()
+    val selectedSortOption by viewModel.sortOption.collectAsState()
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val threshold = viewModel.getThreshold()
+
+    val fusedLocationClient = remember {
+        LocationServices.getFusedLocationProviderClient(context)
+    }
+
+    fun fetchCurrentLocation() {
+        viewModel.setFetchingLocation(true)
+        try {
+            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) {
+                    viewModel.updateCurrentLocation(loc)
+                    viewModel.setFetchingLocation(false)
+                    Toast.makeText(context, "現在地を取得しました", Toast.LENGTH_SHORT).show()
+                } else {
+                    fusedLocationClient.getCurrentLocation(
+                        Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                        null
+                    ).addOnSuccessListener { newLoc ->
+                        viewModel.updateCurrentLocation(newLoc)
+                        viewModel.setFetchingLocation(false)
+                        if (newLoc != null) {
+                            Toast.makeText(context, "現在地を取得しました", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "現在地の取得に失敗しました", Toast.LENGTH_SHORT).show()
+                        }
+                    }.addOnFailureListener {
+                        viewModel.setFetchingLocation(false)
+                        Toast.makeText(context, "現在地の取得に失敗しました", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }.addOnFailureListener {
+                viewModel.setFetchingLocation(false)
+                Toast.makeText(context, "現在地の取得に失敗しました", Toast.LENGTH_SHORT).show()
+            }
+        } catch (_: SecurityException) {
+            viewModel.setFetchingLocation(false)
+            Toast.makeText(context, "位置情報の権限がありません", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        if (fineGranted || coarseGranted) {
+            fetchCurrentLocation()
+        } else {
+            Toast.makeText(context, "位置情報の利用が拒否されました", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun onRequestLocation() {
+        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (hasFine || hasCoarse) {
+            fetchCurrentLocation()
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -125,6 +229,64 @@ fun LocationListScreen(
                     )
                 },
                 actions = {
+                    Box {
+                        IconButton(onClick = { sortMenuExpanded = true }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Sort,
+                                contentDescription = "並び替え"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = sortMenuExpanded,
+                            onDismissRequest = { sortMenuExpanded = false }
+                        ) {
+                            LocationSortOption.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            if (option == selectedSortOption) {
+                                                Icon(
+                                                    Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            } else {
+                                                Spacer(modifier = Modifier.size(18.dp))
+                                            }
+                                            Text(
+                                                text = option.displayName,
+                                                color = if (option == selectedSortOption) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurface
+                                                },
+                                                fontWeight = if (option == selectedSortOption) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.updateSortOption(option)
+                                        sortMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    IconButton(onClick = { viewModel.toggleSearchOpen() }) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "検索",
+                            tint = if (isSearchOpen || searchQuery.isNotEmpty() || maxDistanceKm != null) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+                    }
                     IconButton(onClick = { WorkScheduler.runOnce(context) }) {
                         Icon(Icons.Default.PlayArrow, contentDescription = "今すぐ実行")
                     }
@@ -175,14 +337,14 @@ fun LocationListScreen(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
-                    Icon(Icons.Default.Upload, contentDescription = "エクスポート")
+                    Icon(Icons.Default.FileUpload, contentDescription = "エクスポート")
                 }
                 SmallFloatingActionButton(
                     onClick = { importLauncher.launch("application/json") },
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
-                    Icon(Icons.Default.Download, contentDescription = "インポート")
+                    Icon(Icons.Default.FileDownload, contentDescription = "インポート")
                 }
                 FloatingActionButton(
                     onClick = onAddClick,
@@ -197,37 +359,243 @@ fun LocationListScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             // 星空背景
             StarryBackground()
-            
-            if (items.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                // 検索フィルターパネル
+                AnimatedVisibility(
+                    visible = isSearchOpen,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
                 ) {
-                    Text(
-                        "右下の + から監視地点を追加してください",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    SearchPanel(
+                        searchQuery = searchQuery,
+                        currentLocation = currentLocation,
+                        maxDistanceKm = maxDistanceKm,
+                        isFetchingLocation = isFetchingLocation,
+                        onQueryChange = { viewModel.updateSearchQuery(it) },
+                        onRequestLocation = { onRequestLocation() },
+                        onClearLocation = { viewModel.updateCurrentLocation(null) },
+                        onMaxDistanceChange = { viewModel.updateMaxDistanceKm(it) },
+                        onResetFilters = { viewModel.clearSearchFilter() }
                     )
                 }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
+
+                if (items.isEmpty()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (searchQuery.isNotEmpty() || maxDistanceKm != null) {
+                            Text(
+                                "検索条件に一致する地点が見つかりませんでした",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(onClick = { viewModel.clearSearchFilter() }) {
+                                Text("検索条件をクリア")
+                            }
+                        } else {
+                            Text(
+                                "右下の + から監視地点を追加してください",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = items,
+                            key = { it.location.id },
+                            contentType = { "location_card" }
+                        ) { item ->
+                            LocationCard(
+                                item = item,
+                                onOpenMap = { openGoogleMaps(context, item.location.lat, item.location.lon, item.location.name) },
+                                onEditClick = { onEditClick(item.location.id) },
+                                onDelete = { viewModel.delete(item.location) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchPanel(
+    searchQuery: String,
+    currentLocation: android.location.Location?,
+    maxDistanceKm: Double?,
+    isFetchingLocation: Boolean,
+    onQueryChange: (String) -> Unit,
+    onRequestLocation: () -> Unit,
+    onClearLocation: () -> Unit,
+    onMaxDistanceChange: (Double?) -> Unit,
+    onResetFilters: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+        tonalElevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // 地点名検索テキストフィールド
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("地点名で検索") },
+                placeholder = { Text("例: 東京、山頂") },
+                leadingIcon = {
+                    Icon(Icons.Default.Search, contentDescription = null)
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { onQueryChange("") }) {
+                            Icon(Icons.Default.Clear, contentDescription = "クリア")
+                        }
+                    }
+                },
+                singleLine = true
+            )
+
+            // 現在地取得セクション
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                OutlinedButton(
+                    onClick = onRequestLocation,
+                    enabled = !isFetchingLocation
                 ) {
-                    items(items, key = { it.location.id }) { item ->
-                        LocationCard(
-                            item = item,
-                            threshold = threshold,
-                            onOpenMap = { openGoogleMaps(context, item.location.lat, item.location.lon, item.location.name) },
-                            onEditClick = { onEditClick(item.location.id) },
-                            onDelete = { viewModel.delete(item.location) }
+                    if (isFetchingLocation) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("現在地取得中...")
+                    } else {
+                        Icon(
+                            Icons.Default.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (currentLocation != null) "現在地を更新" else "現在地を取得")
+                    }
+                }
+
+                if (currentLocation != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = String.format(
+                                Locale.JAPAN,
+                                "現在地: %.2f, %.2f",
+                                currentLocation.latitude,
+                                currentLocation.longitude
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        IconButton(
+                            onClick = onClearLocation,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "現在地を解除",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 距離制限（? km以内）絞り込み
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "現在地からの距離絞り込み",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (currentLocation == null) {
+                    Text(
+                        text = "※距離絞り込みを利用するには上の「現在地を取得」を押してください",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+
+                val distancePresets = listOf(null to "指定なし", 5.0 to "5km", 10.0 to "10km", 30.0 to "30km", 50.0 to "50km", 100.0 to "100km", 200.0 to "200km")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    distancePresets.forEach { (dist, label) ->
+                        val selected = (maxDistanceKm == dist)
+                        FilterChip(
+                            selected = selected,
+                            onClick = { onMaxDistanceChange(dist) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    OutlinedTextField(
+                        value = maxDistanceKm?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "",
+                        onValueChange = { text ->
+                            if (text.isEmpty()) {
+                                onMaxDistanceChange(null)
+                            } else {
+                                text.toDoubleOrNull()?.let { onMaxDistanceChange(it) }
+                            }
+                        },
+                        label = { Text("カスタム距離 (km)") },
+                        placeholder = { Text("例: 15") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        trailingIcon = {
+                            if (maxDistanceKm != null) {
+                                IconButton(onClick = { onMaxDistanceChange(null) }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "クリア")
+                                }
+                            }
+                        }
+                    )
+                    if (searchQuery.isNotEmpty() || maxDistanceKm != null || currentLocation != null) {
+                        TextButton(onClick = onResetFilters) {
+                            Text("リセット")
+                        }
                     }
                 }
             }
@@ -238,49 +606,80 @@ fun LocationListScreen(
 @Composable
 private fun LocationCard(
     item: LocationWithResults,
-    threshold: Int,
     onOpenMap: () -> Unit,
     onEditClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val hasHighIndex = item.results.any { it.index >= threshold }
+    // 高指数(hasHighIndex)の場合のアルファアニメーション
+    // state を Draw フェーズ(drawWithContent)でのみ参照することで、Recomposition をゼロに抑える！
+    val borderAlphaState = if (item.hasHighIndex) {
+        val infiniteTransition = rememberInfiniteTransition(label = "cardGlow")
+        infiniteTransition.animateFloat(
+            initialValue = 0.5f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "glowAlpha"
+        )
+    } else {
+        null
+    }
 
-    // グローエフェクトのアニメーション
-    val infiniteTransition = rememberInfiniteTransition(label = "cardGlow")
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glowAlpha"
-    )
+    val hasHighIndex = item.hasHighIndex
+    val cornerRadius = 12.dp
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .drawWithContent {
+                drawContent()
+                val strokeWidth = if (hasHighIndex) 2.dp.toPx() else 1.dp.toPx()
+                val alpha = borderAlphaState?.value ?: 1f
+                val color = if (hasHighIndex) SecondaryCyan.copy(alpha = alpha) else DarkOutline.copy(alpha = 0.5f)
+                val halfStroke = strokeWidth / 2f
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(halfStroke, halfStroke),
+                    size = Size(size.width - strokeWidth, size.height - strokeWidth),
+                    cornerRadius = CornerRadius(cornerRadius.toPx()),
+                    style = Stroke(width = strokeWidth)
+                )
+            },
+        shape = RoundedCornerShape(cornerRadius),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
         ),
-        border = if (hasHighIndex) {
-            BorderStroke(2.dp, SecondaryCyan.copy(alpha = glowAlpha))  // 高指数時は脈動するシアン
-        } else {
-            BorderStroke(1.dp, DarkOutline.copy(alpha = 0.5f))  // 通常時は星の輝きのような青紫
-        }
+        border = null
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.location.name,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
+                    if (item.distanceText != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        ) {
+                            Text(
+                                text = item.distanceText,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "緯度 ${item.location.lat}  経度 ${item.location.lon}  標高 ${item.location.alt}m",
                         style = MaterialTheme.typography.bodySmall,
@@ -290,7 +689,7 @@ private fun LocationCard(
                 Row {
                     IconButton(onClick = onOpenMap) {
                         Icon(
-                            Icons.Default.Map,
+                            Icons.Default.LocationOn,
                             contentDescription = "Googleマップで開く",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -320,16 +719,15 @@ private fun LocationCard(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             } else {
-                val fetchedAt = item.results.firstOrNull()?.fetchedAt
-                if (fetchedAt != null) {
+                item.fetchedAtText?.let {
                     Text(
-                        text = "取得日時: ${formatFetchedAt(fetchedAt)}",
+                        text = "取得日時: $it",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
                     )
                 }
-                HourlyIndexList(item.results)
+                HourlyIndexList(item.groupedResults)
             }
         }
     }
@@ -337,51 +735,31 @@ private fun LocationCard(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("M/d(E)", Locale.JAPAN) }
-
-    // 日付ごとにグループ化（sortedされたMapを使用）
-    val grouped = results.groupBy { result ->
-        try {
-            OffsetDateTime.parse(result.datetime).toLocalDate()
-        } catch (_: Exception) {
-            null
-        }
-    }.toSortedMap(nullsLast(naturalOrder()))
-
+private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        grouped.forEach { (date, itemsForDate) ->
+        groupedResults.forEach { group ->
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (date != null) {
+                if (group.dateText.isNotEmpty()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = date.format(dateFormatter),
+                            text = group.dateText,
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.primary
                         )
-                        // 今日・明日の表示（端末の日付に合わせて動的に判定）
-                        val now = java.time.LocalDate.now()
-                        
-                        val label = when {
-                            date == now -> "今日"
-                            date == now.plusDays(1) -> "明日"
-                            date == now.plusDays(2) -> "明後日"
-                            else -> null
-                        }
-                        if (label != null) {
+                        if (group.relativeDayLabel != null) {
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                             ) {
                                 Text(
-                                    text = label,
+                                    text = group.relativeDayLabel,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 9.sp,
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
@@ -395,7 +773,7 @@ private fun HourlyIndexList(results: List<StarIndexResultEntity>) {
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    itemsForDate.forEach { result ->
+                    group.results.forEach { result ->
                         IndexChip(result = result)
                     }
                 }
@@ -410,26 +788,31 @@ private fun IndexChip(result: StarIndexResultEntity) {
     val bgColor = StarIndexColors.getBackgroundColor(index)
     val textColor = StarIndexColors.getTextColor(index)
 
-    // 高指数時にチップを脈動させる
+    // 高指数(★3以上)の時のみパルスアニメーションを実行
     val shouldPulse = index >= 3
-    val infiniteTransition = rememberInfiniteTransition(label = "chipPulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (shouldPulse) 1.05f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
+    val pulseScaleState = if (shouldPulse) {
+        val infiniteTransition = rememberInfiniteTransition(label = "chipPulse")
+        infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.05f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulseScale"
+        )
+    } else {
+        null
+    }
 
     Surface(
         shape = RoundedCornerShape(6.dp),
         color = bgColor,
         contentColor = textColor,
         modifier = Modifier.graphicsLayer {
-            scaleX = pulseScale
-            scaleY = pulseScale
+            val scale = pulseScaleState?.value ?: 1f
+            scaleX = scale
+            scaleY = scale
         }
     ) {
         Column(
@@ -449,11 +832,6 @@ private fun IndexChip(result: StarIndexResultEntity) {
             )
         }
     }
-}
-
-private fun formatFetchedAt(epochMillis: Long): String {
-    val sdf = SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN)
-    return sdf.format(Date(epochMillis))
 }
 
 private fun openGoogleMaps(context: android.content.Context, lat: Double, lon: Double, name: String) {

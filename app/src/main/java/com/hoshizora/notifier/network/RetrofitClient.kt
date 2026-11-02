@@ -1,7 +1,6 @@
 package com.hoshizora.notifier.network
 
 import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import retrofit2.Retrofit
@@ -31,9 +30,7 @@ object RetrofitClient {
         }
         .build()
 
-    private val moshi = Moshi.Builder()
-        .add(KotlinJsonAdapterFactory())
-        .build()
+    private val moshi = Moshi.Builder().build()
 
     val api: StarIndexApi by lazy {
         Retrofit.Builder()
