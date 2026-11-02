@@ -46,11 +46,12 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -276,14 +277,14 @@ fun LocationListScreen(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = "エクスポート")
+                    Icon(Icons.Default.FileUpload, contentDescription = "エクスポート")
                 }
                 SmallFloatingActionButton(
                     onClick = { importLauncher.launch("application/json") },
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "インポート")
+                    Icon(Icons.Default.FileDownload, contentDescription = "インポート")
                 }
                 FloatingActionButton(
                     onClick = onAddClick,
