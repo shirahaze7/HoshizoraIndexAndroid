@@ -21,8 +21,10 @@ object WorkScheduler {
     /**
      * settingsの run_hour:run_minute に合わせて、
      * 毎日1回実行される定期ワークを(再)登録する。
+     * @param forceUpdate trueの場合は設定変更時など、ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE で既存スケジュールを更新する。
+     *                    falseの場合はアプリ起動時など、ExistingPeriodicWorkPolicy.KEEP を使用してタイマーリセットを防止する。
      */
-    fun scheduleDaily(context: Context) {
+    fun scheduleDaily(context: Context, forceUpdate: Boolean = false) {
         val settings = SettingsRepository(context)
         val target = LocalTime.of(settings.runHour, settings.runMinute)
 
@@ -40,14 +42,20 @@ object WorkScheduler {
         val request = PeriodicWorkRequestBuilder<StarIndexCheckWorker>(
             24, TimeUnit.HOURS
         )
-            .setInitialDelay(initialDelay.toMinutes(), TimeUnit.MINUTES)
+            .setInitialDelay(initialDelay.seconds, TimeUnit.SECONDS)
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.LINEAR, 15, TimeUnit.MINUTES)
             .build()
 
+        val policy = if (forceUpdate) {
+            ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE
+        } else {
+            ExistingPeriodicWorkPolicy.KEEP
+        }
+
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             UNIQUE_WORK_NAME,
-            ExistingPeriodicWorkPolicy.UPDATE,
+            policy,
             request
         )
     }

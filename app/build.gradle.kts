@@ -26,8 +26,8 @@ android {
         // AGP 8.5.2 および Google Play の最新安定ポリシーに適合した Target SDK
         //noinspection ExpiredTargetSdkVersion, OldTargetApi, GradleDependency
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.1.2"
+        versionCode = 6
+        versionName = "1.1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

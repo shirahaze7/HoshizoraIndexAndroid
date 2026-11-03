@@ -12,6 +12,9 @@ import com.hoshizora.notifier.data.LocationSortOption
 import com.hoshizora.notifier.data.SettingsRepository
 import com.hoshizora.notifier.data.StarIndexResultEntity
 import com.hoshizora.notifier.data.UserSettings
+import com.hoshizora.notifier.util.DateTimeUtils
+import com.hoshizora.notifier.worker.RefreshResult
+import com.hoshizora.notifier.worker.StarIndexCheckRunner
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import kotlinx.coroutines.Dispatchers
@@ -91,6 +94,9 @@ class LocationListViewModel(context: Context) : ViewModel() {
     private val _isFetchingLocation = MutableStateFlow(false)
     val isFetchingLocation: StateFlow<Boolean> = _isFetchingLocation.asStateFlow()
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     // リアルタイム設定Flow
     val userSettings: Flow<UserSettings> = settingsRepository.settingsFlow
 
@@ -127,11 +133,7 @@ class LocationListViewModel(context: Context) : ViewModel() {
             // 各エンティティのパースを一括事前計算 (O(N) 1回のみ)
             val parsedResultsGrouped = results.groupBy { it.locationId }.mapValues { (_, list) ->
                 list.map { entity ->
-                    val parsedDt = try {
-                        OffsetDateTime.parse(entity.datetime)
-                    } catch (_: Exception) {
-                        null
-                    }
+                    val parsedDt = DateTimeUtils.parseDateTime(entity.datetime)
                     ParsedStarIndexResult(
                         entity = entity,
                         parsedDateTime = parsedDt,
@@ -296,6 +298,16 @@ class LocationListViewModel(context: Context) : ViewModel() {
     fun clearSearchFilter() {
         _searchQuery.value = ""
         _maxDistanceKm.value = null
+    }
+
+    fun refreshData(context: Context, onResult: (RefreshResult) -> Unit = {}) {
+        if (_isRefreshing.value) return
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            val result = StarIndexCheckRunner.runCheck(context)
+            _isRefreshing.value = false
+            onResult(result)
+        }
     }
 
     fun delete(location: LocationEntity) {

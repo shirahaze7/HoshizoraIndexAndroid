@@ -1,5 +1,12 @@
 package com.hoshizora.notifier.ui
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -16,7 +23,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,7 +55,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.hoshizora.notifier.data.SettingsRepository
+import com.hoshizora.notifier.notification.NotificationHelper
 import com.hoshizora.notifier.ui.theme.StarIndexColors
 import com.hoshizora.notifier.worker.WorkScheduler
 
@@ -73,6 +84,15 @@ fun SettingsScreen(
     var runMinute by remember { mutableStateOf(settings.runMinute.toString()) }
     var notifyWhenNone by remember { mutableStateOf(settings.notifyWhenNone) }
     var fetchHours by remember { mutableFloatStateOf(settings.fetchHours.toFloat()) }
+
+    var isNotificationEnabled by remember {
+        mutableStateOf(NotificationHelper.areNotificationsEnabled(context))
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        isNotificationEnabled = NotificationHelper.areNotificationsEnabled(context)
+    }
 
     val scrollState = rememberScrollState()
 
@@ -104,6 +124,62 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // 警告セクション: 通知が無効の場合
+            if (!isNotificationEnabled) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                "通知機能が無効になっています",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        Text(
+                            "端末の通知許可が無効になっているため、定期星空チェックの結果通知を受け取ることができません。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Button(
+                            onClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                    }
+                                    context.startActivity(intent)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("通知許可を設定する")
+                        }
+                    }
+                }
+            }
+
             // セクション 1: 通知閾値
             Card(
                 colors = CardDefaults.cardColors(
@@ -281,7 +357,7 @@ fun SettingsScreen(
                         steps = 7,
                     )
                     Text(
-                        "指数データを実行時刻から何時間後まで取得・表示するか設定します（APIは約72時間分まで提供）",
+                        "指数データを実行時刻から何時間後まで取得・表示するか設定します（約72時間分まで提供）",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -334,7 +410,7 @@ fun SettingsScreen(
                     settings.runMinute = runMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0
                     settings.notifyWhenNone = notifyWhenNone
                     settings.fetchHours = fetchHours.toInt()
-                    WorkScheduler.scheduleDaily(context)
+                    WorkScheduler.scheduleDaily(context, forceUpdate = true)
                     onDone()
                 },
                 shape = RoundedCornerShape(8.dp),
