@@ -31,8 +31,8 @@ class StarIndexCheckWorker(
 
     data class NotifyResult(
         val locationName: String,
-        val index: Int,
-        val datetime: String?,
+        val maxIndex: Int,
+        val timeRangeText: String,
     )
 
     private data class FetchLocationResult(
@@ -74,7 +74,7 @@ class StarIndexCheckWorker(
                     val loc = fetchResult.location
                     val hourlyResults = fetchResult.hourlyResults
 
-                    if (hourlyResults == null) {
+                    if (hourlyResults.isNullOrEmpty()) {
                         checked.add(loc.name to null)
                         continue
                     }
@@ -83,29 +83,39 @@ class StarIndexCheckWorker(
                     db.starIndexResultDao().replaceForLocation(loc.id, hourlyResults)
 
                     val best = hourlyResults.maxByOrNull { it.index }
-                    checked.add(loc.name to (best?.index ?: 0))
-                    if ((best != null) && (best.index >= threshold)) {
-                        visible.add(NotifyResult(loc.name, best.index, best.datetime))
+                    val maxIndex = best?.index ?: 0
+                    checked.add(loc.name to maxIndex)
+
+                    if (maxIndex >= threshold) {
+                        val timeRangeText = formatTimeRange(hourlyResults, maxIndex)
+                        visible.add(NotifyResult(loc.name, maxIndex, timeRangeText))
                     }
                 }
 
                 if (visible.isNotEmpty()) {
-                    val body = visible.joinToString("\n") {
-                        "・${it.locationName}: 指数${it.index}（${it.datetime ?: "-"}）"
+                    val bodyLines = mutableListOf<String>()
+                    bodyLines.add("今夜、絶好の星空観測チャンスがある地点です！")
+                    visible.forEach { res ->
+                        val indexLabel = getIndexLabel(res.maxIndex)
+                        val timeText = if (res.timeRangeText.isNotBlank()) "（${res.timeRangeText}）" else ""
+                        bodyLines.add("・${res.locationName}: $indexLabel $timeText")
                     }
                     NotificationHelper.show(
                         applicationContext,
-                        "本日($today)星が見えそうな地点があります",
-                        body,
+                        "🌌 今夜の星空通知",
+                        bodyLines.joinToString("\n"),
                     )
                 } else if (settings.notifyWhenNone) {
-                    val body = checked.joinToString("\n") {
-                        "・${it.first}: ${it.second?.toString() ?: "取得失敗"}"
+                    val bodyLines = mutableListOf<String>()
+                    bodyLines.add("本日、設定条件(★${threshold}以上)を満たす地点はありません。")
+                    checked.forEach { (name, maxIndex) ->
+                        val label = if (maxIndex != null) getIndexLabel(maxIndex) else "取得失敗"
+                        bodyLines.add("・$name: 最高 $label")
                     }
                     NotificationHelper.show(
                         applicationContext,
-                        "本日($today)は見えそうな地点なし",
-                        body,
+                        "☁️ 本日の星空予報",
+                        bodyLines.joinToString("\n"),
                     )
                 }
 
@@ -113,6 +123,59 @@ class StarIndexCheckWorker(
             } catch (_: Exception) {
                 Result.retry()
             }
+        }
+    }
+
+    companion object {
+        fun getIndexLabel(index: Int): String = when (index) {
+            4 -> "★4（最高）"
+            3 -> "★3（良好）"
+            2 -> "★2（標準）"
+            1 -> "★1（薄暗）"
+            else -> "★0（曇り/雨）"
+        }
+
+        fun formatTimeRange(hourlyResults: List<StarIndexResultEntity>, targetIndex: Int): String {
+            val matching = hourlyResults.filter { it.index == targetIndex }
+            if (matching.isEmpty()) return ""
+
+            val hours = matching.mapNotNull {
+                try {
+                    OffsetDateTime.parse(it.datetime).hour
+                } catch (_: Exception) {
+                    null
+                }
+            }.distinct().sorted()
+
+            if (hours.isEmpty()) return ""
+
+            if (hours.size == 1) return "${hours[0]}時"
+
+            val ranges = mutableListOf<String>()
+            var start = hours[0]
+            var prev = hours[0]
+
+            for (i in 1 until hours.size) {
+                val curr = hours[i]
+                if (curr == prev + 1) {
+                    prev = curr
+                } else {
+                    if (start == prev) {
+                        ranges.add("${start}時")
+                    } else {
+                        ranges.add("${start}時〜${prev}時")
+                    }
+                    start = curr
+                    prev = curr
+                }
+            }
+            if (start == prev) {
+                ranges.add("${start}時")
+            } else {
+                ranges.add("${start}時〜${prev}時")
+            }
+
+            return ranges.joinToString(", ")
         }
     }
 

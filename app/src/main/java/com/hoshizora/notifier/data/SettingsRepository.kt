@@ -64,6 +64,10 @@ class SettingsRepository(context: Context) {
         get() = parseSortOption(prefs.getString(KEY_SORT_OPTION, LocationSortOption.REGISTERED.name))
         set(value) = prefs.edit { putString(KEY_SORT_OPTION, value.name) }
 
+    var hasCompletedOnboarding: Boolean
+        get() = prefs.getBoolean(KEY_HAS_COMPLETED_ONBOARDING, false)
+        set(value) = prefs.edit { putBoolean(KEY_HAS_COMPLETED_ONBOARDING, value) }
+
     fun getCurrentSettings(): UserSettings = UserSettings(
         threshold = threshold,
         targetHours = targetHours,
@@ -93,6 +97,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_NOTIFY_WHEN_NONE = "notify_when_none"
         private const val KEY_FETCH_HOURS = "fetch_hours"
         private const val KEY_SORT_OPTION = "sort_option"
+        private const val KEY_HAS_COMPLETED_ONBOARDING = "has_completed_onboarding"
 
         const val DEFAULT_THRESHOLD = 2
         const val DEFAULT_TARGET_HOURS = "20,21,22,23,0,1,2"

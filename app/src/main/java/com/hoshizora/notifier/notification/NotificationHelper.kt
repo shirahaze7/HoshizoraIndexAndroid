@@ -14,6 +14,7 @@ object NotificationHelper {
 
     private const val CHANNEL_ID = "hoshizora_channel"
     private const val NOTIFICATION_ID = 1001
+    private const val DEMO_NOTIFICATION_ID = 1002
 
     fun ensureChannel(context: Context) {
         val channel = NotificationChannel(
@@ -27,8 +28,13 @@ object NotificationHelper {
         manager?.createNotificationChannel(channel)
     }
 
+    fun areNotificationsEnabled(context: Context): Boolean {
+        val manager = NotificationManagerCompat.from(context)
+        return manager.areNotificationsEnabled()
+    }
+
     @SuppressLint("MissingPermission")
-    fun show(context: Context, title: String, body: String) {
+    fun show(context: Context, title: String, body: String, notificationId: Int = NOTIFICATION_ID) {
         ensureChannel(context)
 
         val intent = Intent(context, MainActivity::class.java)
@@ -48,6 +54,16 @@ object NotificationHelper {
             .setAutoCancel(true)
             .build()
 
-        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
+    }
+
+    /** チュートリアル用の模擬体験通知を発行する */
+    fun showDemoNotification(context: Context) {
+        show(
+            context = context,
+            title = "🌌 今夜の星空通知 (体験デモ)",
+            body = "今夜【富士山 5合目】で絶好の星空が広がります！\n・22時〜23時: ★4（最高）\n天の川や撮影の絶好の機会です！",
+            notificationId = DEMO_NOTIFICATION_ID
+        )
     }
 }
