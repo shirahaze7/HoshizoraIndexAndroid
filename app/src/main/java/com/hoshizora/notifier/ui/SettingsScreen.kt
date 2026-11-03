@@ -61,11 +61,10 @@ import com.hoshizora.notifier.notification.NotificationHelper
 import com.hoshizora.notifier.ui.theme.StarIndexColors
 import com.hoshizora.notifier.worker.WorkScheduler
 
-/** 選択可能な時間帯: 18時〜23時、翌0時〜8時 */
-private val SELECTABLE_HOURS: List<Int> = (18..23) + (0..8)
+/** 選択可能な時間帯: 0時〜8時、18時〜23時 */
+private val SELECTABLE_HOURS: List<Int> = (0..8) + (18..23)
 
-private fun hourLabel(hour: Int): String =
-    if (hour in 0..8) "翌${hour}時" else "${hour}時"
+private fun hourLabel(hour: Int): String = "${hour}時"
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -219,6 +218,21 @@ fun SettingsScreen(
                         }
                     }
 
+                    val levelDescription = when (selectedLevel) {
+                        0 -> "悪天候（厚い雲や悪天候。天体観測には不向き）"
+                        1 -> "薄暗（雲が多く、一部の明るい星が薄っすら見える程度）"
+                        2 -> "標準（標準的な夜空。主要な星座や明るい星が楽しめる。※光害が多い場所ではこれが最大かも）"
+                        3 -> "良好（澄んだ綺麗な星空！暗い星も観測可能）"
+                        4 -> "最高（雲ひとつない絶好の夜空！最高の観測・天の川も撮影チャンス）"
+                        else -> ""
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = levelDescription,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
                     Spacer(modifier = Modifier.height(8.dp))
                     Slider(
                         value = threshold,
@@ -239,7 +253,7 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        "監視対象の時間帯 (18時〜翌8時)",
+                        "監視対象の時間帯 (0時〜8時、18時〜24時)",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
