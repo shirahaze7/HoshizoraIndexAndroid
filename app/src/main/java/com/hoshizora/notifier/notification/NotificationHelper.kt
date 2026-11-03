@@ -1,19 +1,26 @@
 package com.hoshizora.notifier.notification
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.hoshizora.notifier.MainActivity
 
 object NotificationHelper {
 
     private const val CHANNEL_ID = "hoshizora_channel"
     private const val NOTIFICATION_ID = 1001
+    private const val DEMO_NOTIFICATION_ID = 1002
+    private const val TAG = "NotificationHelper"
 
     fun ensureChannel(context: Context) {
         val channel = NotificationChannel(
@@ -27,8 +34,29 @@ object NotificationHelper {
         manager?.createNotificationChannel(channel)
     }
 
+    fun areNotificationsEnabled(context: Context): Boolean {
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            return false
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                return false
+            }
+        }
+        return true
+    }
+
     @SuppressLint("MissingPermission")
-    fun show(context: Context, title: String, body: String) {
+    fun show(context: Context, title: String, body: String, notificationId: Int = NOTIFICATION_ID): Boolean {
+        if (!areNotificationsEnabled(context)) {
+            Log.w(TAG, "Notification skipped: Notifications disabled or POST_NOTIFICATIONS permission not granted.")
+            return false
+        }
+
         ensureChannel(context)
 
         val intent = Intent(context, MainActivity::class.java)
@@ -48,6 +76,18 @@ object NotificationHelper {
             .setAutoCancel(true)
             .build()
 
-        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        Log.i(TAG, "Notification posted successfully: $title (ID: $notificationId)")
+        return true
+    }
+
+    /** チュートリアル用の模擬体験通知を発行する */
+    fun showDemoNotification(context: Context): Boolean {
+        return show(
+            context = context,
+            title = "🌌 今夜の星空通知 (体験デモ)",
+            body = "今夜【富士山 5合目】で絶好の星空が広がります！\n・22時〜23時: ★4（最高）\n天の川や撮影の絶好の機会です！",
+            notificationId = DEMO_NOTIFICATION_ID
+        )
     }
 }

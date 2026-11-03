@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -101,11 +102,12 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.hoshizora.notifier.data.LocationSortOption
 import com.hoshizora.notifier.data.StarIndexResultEntity
+import com.hoshizora.notifier.notification.NotificationHelper
 import com.hoshizora.notifier.ui.theme.DarkOutline
 import com.hoshizora.notifier.ui.theme.SecondaryCyan
 import com.hoshizora.notifier.ui.theme.StarIndexColors
 import com.hoshizora.notifier.ui.theme.StarryBackground
-import com.hoshizora.notifier.worker.WorkScheduler
+import com.hoshizora.notifier.worker.RefreshResult
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
@@ -126,6 +128,7 @@ fun LocationListScreen(
     val maxDistanceKm by viewModel.maxDistanceKm.collectAsState()
     val isSearchOpen by viewModel.isSearchOpen.collectAsState()
     val isFetchingLocation by viewModel.isFetchingLocation.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val selectedSortOption by viewModel.sortOption.collectAsState()
     var sortMenuExpanded by remember { mutableStateOf(false) }
 
@@ -219,6 +222,14 @@ fun LocationListScreen(
         }
     }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(context, "通知権限が無効のため、通知が配信されない可能性があります", Toast.LENGTH_LONG).show()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -287,8 +298,41 @@ fun LocationListScreen(
                             }
                         )
                     }
-                    IconButton(onClick = { WorkScheduler.runOnce(context) }) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = "今すぐ実行")
+                    IconButton(
+                        onClick = {
+                            if (!isRefreshing) {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                                viewModel.refreshData(context) { result ->
+                                    when (result) {
+                                        is RefreshResult.NoLocations -> {
+                                            Toast.makeText(context, "地点が登録されていません", Toast.LENGTH_SHORT).show()
+                                        }
+                                        is RefreshResult.Success -> {
+                                            val noteStatus = if (NotificationHelper.areNotificationsEnabled(context)) "" else "（※通知はオフです）"
+                                            Toast.makeText(context, "星空指数を最新情報に更新しました$noteStatus", Toast.LENGTH_SHORT).show()
+                                        }
+                                        is RefreshResult.Error -> {
+                                            Toast.makeText(context, "取得に失敗しました: ${result.exception.localizedMessage ?: "通信エラー"}", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !isRefreshing
+                    ) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "今すぐ実行")
+                        }
                     }
                     IconButton(onClick = onSettingsClick) {
                         Icon(Icons.Default.Settings, contentDescription = "設定")

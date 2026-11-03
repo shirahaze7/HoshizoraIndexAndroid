@@ -7,11 +7,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.hoshizora.notifier.data.SettingsRepository
 import com.hoshizora.notifier.ui.AddEditLocationScreen
 import com.hoshizora.notifier.ui.LocationListScreen
+import com.hoshizora.notifier.ui.OnboardingScreen
 import com.hoshizora.notifier.ui.SettingsScreen
 import com.hoshizora.notifier.ui.theme.HoshizoraTheme
 
@@ -30,8 +34,27 @@ class MainActivity : ComponentActivity() {
         setContent {
             HoshizoraTheme {
                 Surface {
+                    val context = LocalContext.current
+                    val settingsRepository = remember { SettingsRepository(context) }
+                    val startDestination = remember {
+                        if (!settingsRepository.hasCompletedOnboarding) "onboarding" else "list"
+                    }
+
                     val navController = rememberNavController()
-                    NavHost(navController = navController, startDestination = "list") {
+                    NavHost(navController = navController, startDestination = startDestination) {
+                        composable("onboarding") {
+                            OnboardingScreen(
+                                onComplete = {
+                                    if (navController.previousBackStackEntry != null) {
+                                        navController.popBackStack()
+                                    } else {
+                                        navController.navigate("list") {
+                                            popUpTo("onboarding") { inclusive = true }
+                                        }
+                                    }
+                                }
+                            )
+                        }
                         composable("list") {
                             LocationListScreen(
                                 onAddClick = { navController.navigate("edit/-1") },
@@ -47,7 +70,10 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         composable("settings") {
-                            SettingsScreen { navController.popBackStack() }
+                            SettingsScreen(
+                                onDone = { navController.popBackStack() },
+                                onOpenOnboarding = { navController.navigate("onboarding") }
+                            )
                         }
                     }
                 }
