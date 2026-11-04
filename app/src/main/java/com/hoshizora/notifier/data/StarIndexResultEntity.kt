@@ -33,5 +33,13 @@ data class StarIndexResultEntity(
     val isNextDay: Boolean,
     val index: Int,
     /** この結果を取得した(Workerを実行した)時刻(epoch millis) */
-    val fetchedAt: Long
+    val fetchedAt: Long,
+    /** 日没時刻 (例: 18:30) */
+    val sunIn: String? = null,
+    /** 日の出時刻 (例: 05:15) */
+    val sunOut: String? = null,
+    /** 月齢 (例: 14.2) */
+    val moonAge: String? = null,
+    /** 予報対象日 (例: 2026-11-04) */
+    val forecastDate: String? = null,
 )

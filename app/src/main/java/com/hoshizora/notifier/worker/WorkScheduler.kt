@@ -3,10 +3,9 @@ package com.hoshizora.notifier.worker
 import android.content.Context
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.hoshizora.notifier.data.SettingsRepository
 import java.time.Duration
@@ -20,9 +19,10 @@ object WorkScheduler {
 
     /**
      * settingsの run_hour:run_minute に合わせて、
-     * 毎日1回実行される定期ワークを(再)登録する。
-     * @param forceUpdate trueの場合は設定変更時など、ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE で既存スケジュールを更新する。
-     *                    falseの場合はアプリ起動時など、ExistingPeriodicWorkPolicy.KEEP を使用してタイマーリセットを防止する。
+     * 次回の指定時刻に向けた OneTimeWorkRequest をスケジュールする（チャイニング方式）。
+     *
+     * @param forceUpdate trueの場合は設定変更や実行完了時など、ExistingWorkPolicy.REPLACE で既存スケジュールを更新する。
+     *                    falseの場合はアプリ起動時など、ExistingWorkPolicy.KEEP を使用して既存タイマーを維持する。
      */
     fun scheduleDaily(context: Context, forceUpdate: Boolean = false) {
         val settings = SettingsRepository(context)
@@ -30,7 +30,8 @@ object WorkScheduler {
 
         val now = LocalDateTime.now()
         var nextRun = now.toLocalDate().atTime(target)
-        if (nextRun.isBefore(now)) {
+        // すでに過ぎているか、1分未満の微差なら明日に設定
+        if (!nextRun.isAfter(now)) {
             nextRun = nextRun.plusDays(1)
         }
         val initialDelay = Duration.between(now, nextRun)
@@ -39,21 +40,19 @@ object WorkScheduler {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val request = PeriodicWorkRequestBuilder<StarIndexCheckWorker>(
-            24, TimeUnit.HOURS
-        )
+        val request = OneTimeWorkRequestBuilder<StarIndexCheckWorker>()
             .setInitialDelay(initialDelay.seconds, TimeUnit.SECONDS)
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.LINEAR, 15, TimeUnit.MINUTES)
             .build()
 
         val policy = if (forceUpdate) {
-            ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE
+            ExistingWorkPolicy.REPLACE
         } else {
-            ExistingPeriodicWorkPolicy.KEEP
+            ExistingWorkPolicy.KEEP
         }
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        WorkManager.getInstance(context).enqueueUniqueWork(
             UNIQUE_WORK_NAME,
             policy,
             request

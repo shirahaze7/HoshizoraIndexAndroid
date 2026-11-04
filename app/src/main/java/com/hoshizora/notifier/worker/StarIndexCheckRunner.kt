@@ -192,6 +192,8 @@ object StarIndexCheckRunner {
         val results = mutableListOf<StarIndexResultEntity>()
 
         for (entry in entries) {
+            val forecastDateStr = DateTimeUtils.parseDateTime(entry.startDatetime)?.toLocalDate()?.toString()
+            var addedCount = 0
             for (item in entry.starlightIndex) {
                 val dt = DateTimeUtils.parseDateTime(item.datetime)
                 if (dt == null) {
@@ -210,8 +212,36 @@ object StarIndexCheckRunner {
                         isNextDay = dt.toLocalDate() != today,
                         index = item.index,
                         fetchedAt = fetchedAt,
+                        sunIn = entry.sunIn,
+                        sunOut = entry.sunOut,
+                        moonAge = entry.moonAge,
+                        forecastDate = forecastDateStr,
                     ),
                 )
+                addedCount++
+            }
+
+            // この DayEntry から対象時間帯のアイテムが 1 件も採択されなかった場合でも、
+            // 当該 DayEntry の日の出・日没・月齢情報を保持するためにダミーレコード (index = -1) を 1 件保持する
+            if (addedCount == 0 && entry.starlightIndex.isNotEmpty()) {
+                val repItem = entry.starlightIndex.first()
+                val dt = DateTimeUtils.parseDateTime(repItem.datetime)
+                if (dt != null) {
+                    results.add(
+                        StarIndexResultEntity(
+                            locationId = loc.id,
+                            datetime = repItem.datetime,
+                            hour = dt.hour,
+                            isNextDay = dt.toLocalDate() != today,
+                            index = -1,
+                            fetchedAt = fetchedAt,
+                            sunIn = entry.sunIn,
+                            sunOut = entry.sunOut,
+                            moonAge = entry.moonAge,
+                            forecastDate = forecastDateStr,
+                        ),
+                    )
+                }
             }
         }
 
