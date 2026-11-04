@@ -109,6 +109,7 @@ import com.hoshizora.notifier.ui.theme.SecondaryCyan
 import com.hoshizora.notifier.ui.theme.StarIndexColors
 import com.hoshizora.notifier.ui.theme.StarryBackground
 import com.hoshizora.notifier.util.DateTimeUtils
+import com.hoshizora.notifier.util.MoonUtils
 import com.hoshizora.notifier.worker.RefreshResult
 import kotlinx.coroutines.launch
 import java.io.File
@@ -857,7 +858,7 @@ private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
                                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                                 ) {
                                     Text(
-                                        text = "🌙月齢 $moon",
+                                        text = MoonUtils.formatMoonDisplay(moon),
                                         style = MaterialTheme.typography.labelSmall,
                                         fontSize = 9.sp,
                                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
