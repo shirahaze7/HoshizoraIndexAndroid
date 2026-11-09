@@ -19,6 +19,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -199,6 +201,33 @@ fun LocationListScreen(
         }
     }
 
+    // カードの発光・チップの拡大で共通利用する単一の無限アニメーションクロック（アニメーションインスタンスの乱立を防ぐ）
+    val infiniteTransition = rememberInfiniteTransition(label = "sharedAnimations")
+    val cardGlowAlphaState = infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowAlpha"
+    )
+    val chipPulseScaleState = infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+
+    // ラムダオブジェクトの再生成（アロケーション）を防止し、安定したプロバイダとして保持
+    val cardGlowAlphaProvider = remember { { cardGlowAlphaState.value } }
+    val chipPulseScaleProvider = remember { { chipPulseScaleState.value } }
+
+    val listState = rememberLazyListState()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -276,8 +305,8 @@ fun LocationListScreen(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize()) {
-            // 星空背景
-            StarryBackground()
+            // 星空背景 (スクロール中はアニメーション描画を一時停止してリストの120FPS滑らかスクロールを最優先)
+            StarryBackground(isPaused = listState.isScrollInProgress)
 
             Column(
                 modifier = Modifier
@@ -356,6 +385,7 @@ fun LocationListScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         LazyColumn(
+                            state = listState,
                             contentPadding = PaddingValues(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxSize()
@@ -367,6 +397,8 @@ fun LocationListScreen(
                             ) { item ->
                                 LocationCard(
                                     item = item,
+                                    cardGlowAlphaProvider = cardGlowAlphaProvider,
+                                    chipPulseScaleProvider = chipPulseScaleProvider,
                                     onOpenMap = { openGoogleMaps(context, item.location.lat, item.location.lon, item.location.name) },
                                     onEditClick = { onEditClick(item.location.id) },
                                     onDelete = { viewModel.delete(item.location) }
@@ -616,27 +648,12 @@ private fun SearchPanel(
 @Composable
 private fun LocationCard(
     item: LocationWithResults,
+    cardGlowAlphaProvider: () -> Float,
+    chipPulseScaleProvider: () -> Float,
     onOpenMap: () -> Unit,
     onEditClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    // 高指数(hasHighIndex)の場合のアルファアニメーション
-    // state を Draw フェーズ(drawWithContent)でのみ参照することで、Recomposition をゼロに抑える！
-    val borderAlphaState = if (item.hasHighIndex) {
-        val infiniteTransition = rememberInfiniteTransition(label = "cardGlow")
-        infiniteTransition.animateFloat(
-            initialValue = 0.5f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "glowAlpha"
-        )
-    } else {
-        null
-    }
-
     val hasHighIndex = item.hasHighIndex
     val cornerRadius = 12.dp
 
@@ -646,11 +663,13 @@ private fun LocationCard(
             .drawWithContent {
                 drawContent()
                 val strokeWidth = if (hasHighIndex) 2.dp.toPx() else 1.dp.toPx()
-                val alpha = borderAlphaState?.value ?: 1f
-                val color = if (hasHighIndex) SecondaryCyan.copy(alpha = alpha) else DarkOutline.copy(alpha = 0.5f)
+                val alpha = if (hasHighIndex) cardGlowAlphaProvider() else 1f
+                val color = if (hasHighIndex) SecondaryCyan else DarkOutline
+                val drawAlpha = if (hasHighIndex) alpha else 0.5f
                 val halfStroke = strokeWidth / 2f
                 drawRoundRect(
                     color = color,
+                    alpha = drawAlpha,
                     topLeft = Offset(halfStroke, halfStroke),
                     size = Size(size.width - strokeWidth, size.height - strokeWidth),
                     cornerRadius = CornerRadius(cornerRadius.toPx()),
@@ -676,18 +695,18 @@ private fun LocationCard(
                     )
                     if (item.distanceText != null) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ) {
-                            Text(
-                                text = item.distanceText,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
+                        Text(
+                            text = item.distanceText,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier
+                                .background(
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    shape = RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -737,7 +756,10 @@ private fun LocationCard(
                         modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
                     )
                 }
-                HourlyIndexList(item.groupedResults)
+                HourlyIndexList(
+                    groupedResults = item.groupedResults,
+                    chipPulseScaleProvider = chipPulseScaleProvider
+                )
             }
         }
     }
@@ -745,7 +767,10 @@ private fun LocationCard(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
+private fun HourlyIndexList(
+    groupedResults: List<FormattedGroupedResults>,
+    chipPulseScaleProvider: () -> Float
+) {
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxWidth()
@@ -768,18 +793,18 @@ private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
                                 color = MaterialTheme.colorScheme.primary
                             )
                             if (group.relativeDayLabel != null) {
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                ) {
-                                    Text(
-                                        text = group.relativeDayLabel,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 9.sp,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                    )
-                                }
+                                Text(
+                                    text = group.relativeDayLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
                             }
                         }
 
@@ -789,57 +814,62 @@ private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             group.moonAge?.let { moon ->
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ) {
-                                    Text(
-                                        text = MoonUtils.formatMoonDisplay(moon),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 9.sp,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
+                                Text(
+                                    text = MoonUtils.formatMoonDisplay(moon),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                )
                             }
                             group.sunOut?.let { sunOut ->
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ) {
-                                    Text(
-                                        text = "🌅日の出 $sunOut",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 9.sp,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
+                                Text(
+                                    text = "🌅日の出 $sunOut",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                )
                             }
                             group.sunIn?.let { sunIn ->
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ) {
-                                    Text(
-                                        text = "🌇日没 $sunIn",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 9.sp,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
+                                Text(
+                                    text = "🌇日没 $sunIn",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                )
                             }
                         }
                     }
                 }
+
+                val validResults = remember(group.results) { group.results.filter { it.index >= 0 } }
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    group.results.filter { it.index >= 0 }.forEach { result ->
-                        IndexChip(result = result)
+                    validResults.forEach { result ->
+                        IndexChip(
+                            result = result,
+                            chipPulseScaleProvider = chipPulseScaleProvider
+                        )
                     }
                 }
             }
@@ -848,53 +878,42 @@ private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
 }
 
 @Composable
-private fun IndexChip(result: StarIndexResultEntity) {
+private fun IndexChip(
+    result: StarIndexResultEntity,
+    chipPulseScaleProvider: () -> Float
+) {
     val index = result.index.coerceIn(0, 4)
     val bgColor = StarIndexColors.getBackgroundColor(index)
     val textColor = StarIndexColors.getTextColor(index)
 
     val hourText = "${result.hour}時"
-
-    // 高指数(★3以上)の時のみパルスアニメーションを実行
     val shouldPulse = index >= 3
-    val pulseScaleState = if (shouldPulse) {
-        val infiniteTransition = rememberInfiniteTransition(label = "chipPulse")
-        infiniteTransition.animateFloat(
-            initialValue = 1f,
-            targetValue = 1.05f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "pulseScale"
-        )
-    } else {
-        null
-    }
 
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = bgColor,
-        contentColor = textColor,
-        modifier = Modifier.graphicsLayer {
-            val scale = pulseScaleState?.value ?: 1f
-            scaleX = scale
-            scaleY = scale
-        }
+    Box(
+        modifier = Modifier
+            .graphicsLayer {
+                if (shouldPulse) {
+                    val scale = chipPulseScaleProvider()
+                    scaleX = scale
+                    scaleY = scale
+                }
+            }
+            .background(color = bgColor, shape = RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-        ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = hourText,
                 style = MaterialTheme.typography.labelSmall,
+                color = textColor,
                 fontSize = 10.sp
             )
             Spacer(modifier = Modifier.height(1.dp))
             Text(
                 text = "★$index",
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = textColor,
                 fontSize = 12.sp
             )
         }
