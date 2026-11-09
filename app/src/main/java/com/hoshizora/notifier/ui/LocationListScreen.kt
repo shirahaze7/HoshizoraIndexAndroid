@@ -1,7 +1,6 @@
 package com.hoshizora.notifier.ui
 
 import android.Manifest
-import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -48,8 +47,6 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -67,7 +64,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -77,7 +73,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -92,7 +87,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.location.LocationServices
@@ -106,8 +100,6 @@ import com.hoshizora.notifier.ui.theme.StarIndexColors
 import com.hoshizora.notifier.ui.theme.StarryBackground
 import com.hoshizora.notifier.util.MoonUtils
 import com.hoshizora.notifier.worker.RefreshResult
-import kotlinx.coroutines.launch
-import java.io.File
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -130,7 +122,6 @@ fun LocationListScreen(
     val selectedSortOption by viewModel.sortOption.collectAsState()
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     val fusedLocationClient = remember {
         LocationServices.getFusedLocationProviderClient(context)
@@ -198,26 +189,7 @@ fun LocationListScreen(
         }
     }
 
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri: Uri? ->
-        uri?.let {
-            val json = context.contentResolver.openInputStream(it)?.use { stream ->
-                stream.bufferedReader().readText()
-            }
-            json?.let { content ->
-                viewModel.importFromJson(
-                    json = content,
-                    onSuccess = {
-                        Toast.makeText(context, "インポートしました", Toast.LENGTH_SHORT).show()
-                    },
-                    onError = { error ->
-                        Toast.makeText(context, "エラー: ${error.message}", Toast.LENGTH_LONG).show()
-                    },
-                )
-            }
-        }
-    }
+
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -294,59 +266,12 @@ fun LocationListScreen(
             )
         },
         floatingActionButton = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            FloatingActionButton(
+                onClick = onAddClick,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
-                SmallFloatingActionButton(
-                    onClick = {
-                        scope.launch {
-                            try {
-                                val json = viewModel.exportToJson()
-                                val cacheFile = File(context.cacheDir, "hoshizora_locations.json")
-                                cacheFile.writeText(json)
-
-                                val contentUri: Uri = FileProvider.getUriForFile(
-                                    context.applicationContext,
-                                    "${context.packageName}.fileprovider",
-                                    cacheFile
-                                )
-
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "application/json"
-                                    putExtra(Intent.EXTRA_STREAM, contentUri)
-                                    clipData = ClipData.newRawUri("Locations JSON", contentUri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                val chooser = Intent.createChooser(intent, "JSONとしてエクスポート")
-                                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(chooser)
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                                Toast.makeText(context, "エクスポート失敗: ${e.message}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    },
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                ) {
-                    Icon(Icons.Default.FileUpload, contentDescription = "エクスポート")
-                }
-                SmallFloatingActionButton(
-                    onClick = { importLauncher.launch("application/json") },
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                ) {
-                    Icon(Icons.Default.FileDownload, contentDescription = "インポート")
-                }
-                FloatingActionButton(
-                    onClick = onAddClick,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "地点を追加")
-                }
+                Icon(Icons.Default.Add, contentDescription = "地点を追加")
             }
         }
     ) { padding ->
