@@ -86,7 +86,7 @@ dependencies {
 
     // AGP 8.5.2 との互換性およびアプリ動作安定性を考慮し、最適な安定バージョンで固定
     //noinspection GradleDependency
-    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     //noinspection GradleDependency
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     //noinspection GradleDependency
