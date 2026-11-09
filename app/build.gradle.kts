@@ -107,7 +107,7 @@ dependencies {
     //noinspection GradleDependency
     implementation("androidx.room:room-ktx:2.6.1")
     //noinspection GradleDependency
-    ksp("androidx.room:room-compiler:2.6.1")
+    ksp("androidx.room:room-compiler:2.8.5")
 
     // WorkManager (AGP 8.5.2 互換バージョン 2.10.0 で固定)
     //noinspection GradleDependency
