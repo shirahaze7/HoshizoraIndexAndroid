@@ -99,7 +99,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     //noinspection GradleDependency
-    implementation("androidx.navigation:navigation-compose:2.8.4")
+    implementation("androidx.navigation:navigation-compose:2.10.2")
 
     // Room (ローカルDB: AGP 8.5.2 互換バージョン 2.6.1 で固定)
     //noinspection GradleDependency
