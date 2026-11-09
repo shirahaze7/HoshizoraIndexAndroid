@@ -1,0 +1,26 @@
+# Set default behavior to automatic text normalization
+* text=auto
+
+# Source code files (force LF)
+*.kt text eol=lf
+*.java text eol=lf
+*.xml text eol=lf
+*.gradle text eol=lf
+*.gradle.kts text eol=lf
+*.properties text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+
+# Executables / Shell scripts (force LF for Linux/macOS/GitHub Actions)
+gradlew text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.jar binary
+*.so binary

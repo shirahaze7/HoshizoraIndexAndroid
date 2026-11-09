@@ -1,0 +1,57 @@
+name: 🐛 バグ報告 (Bug Report)
+description: アプリの問題やエラーを報告します
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        バグの報告にご協力いただきありがとうございます！
+        できるだけ詳しい情報を記載していただけると、スムーズに対応できます。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 不具合の概要
+      description: 何が起こったのか、簡潔に説明してください。
+      placeholder: 地点登録画面で特定の操作を行うとアプリがクラッシュする...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: 不具合が発生する手順を記載してください。
+      placeholder: |
+        1. メイン画面で「+」ボタンを押す
+        2. 地図上でピンをタップする
+        3. 「保存」ボタンを押す
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待していた挙動
+      description: 本来どう動くべきだったかを記載してください。
+      placeholder: エラーにならず地点が保存されてメイン画面に戻る。
+    validations:
+      required: false
+
+  - type: input
+    id: environment
+    attributes:
+      label: 発生環境
+      description: Androidのバージョンやデバイス名
+      placeholder: Android 14 / Pixel 7a
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: ログ / スクリーンショット
+      description: エラーログや画面のキャプチャがあれば貼り付けてください。
+    validations:
+      required: false
