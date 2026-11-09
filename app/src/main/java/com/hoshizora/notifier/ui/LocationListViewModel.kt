@@ -134,19 +134,15 @@ class LocationListViewModel(context: Context) : ViewModel() {
             val cutoff = nowOffsetDateTime.minusHours(1)
 
             // 各エンティティのパースを一括事前計算 (O(N) 1回のみ)
-            // 観測夜(forecastDate)を優先し、無ければ朝5時切り替えの観測日でグループ化
+            // 実日付(parsedDateTimeのLocalDate)でグループ化
             val parsedResultsGrouped = results.groupBy { it.locationId }.mapValues { (_, list) ->
                 list.map { entity ->
                     val parsedDt = DateTimeUtils.parseDateTime(entity.datetime)
-                    val obsDate = entity.forecastDate?.let { fDateStr ->
-                        try { LocalDate.parse(fDateStr) } catch (_: Exception) { null }
-                    } ?: parsedDt?.let { dt ->
-                        if (dt.hour < 5) dt.toLocalDate().minusDays(1) else dt.toLocalDate()
-                    }
+                    val actualDate = parsedDt?.toLocalDate()
                     ParsedStarIndexResult(
                         entity = entity,
                         parsedDateTime = parsedDt,
-                        localDate = obsDate
+                        localDate = actualDate
                     )
                 }.sortedWith(compareBy(nullsLast()) { it.parsedDateTime })
             }
@@ -197,32 +193,52 @@ class LocationListViewModel(context: Context) : ViewModel() {
                     val prevDateStr = date?.minusDays(1)?.toString()
 
                     // 日没(sunIn): 当日 date の夕方の日没
-                    // 1) sunIn の日付が date と一致するもの
-                    // 2) なければ forecastDate == dateStr の sunIn
+                    // 1) forecastDate == dateStr (当日の予報) の sunIn
+                    // 2) なければ sunIn の日付が date と一致するもの
+                    // 3) なければ forecastDate == prevDateStr の sunIn
                     val sunInRaw = parsedLocResults.firstNotNullOfOrNull { item ->
+                        if (item.entity.forecastDate == dateStr && !item.entity.sunIn.isNullOrBlank()) {
+                            item.entity.sunIn
+                        } else null
+                    } ?: parsedLocResults.firstNotNullOfOrNull { item ->
                         val sunInDt = DateTimeUtils.parseDateTime(item.entity.sunIn)
                         if (sunInDt != null && sunInDt.toLocalDate() == date) {
                             item.entity.sunIn
                         } else null
                     } ?: parsedLocResults.firstNotNullOfOrNull { item ->
-                        if (item.entity.forecastDate == dateStr) item.entity.sunIn else null
+                        if (item.entity.forecastDate == prevDateStr && !item.entity.sunIn.isNullOrBlank()) {
+                            item.entity.sunIn
+                        } else null
                     }
 
                     // 日の出(sunOut): 当日 date の早朝の日の出
-                    // 1) sunOut の日付が date と一致するもの
-                    // 2) なければ forecastDate == prevDateStr (前日夜の予報) の sunOut
+                    // 1) forecastDate == prevDateStr (前日夜の予報) の sunOut
+                    // 2) なければ sunOut の日付が date と一致し、かつ forecastDate != dateStr の sunOut
+                    // 3) なければ forecastDate == dateStr (当日の予報) の sunOut (前日予報が無い場合のフォールバック)
                     val sunOutRaw = parsedLocResults.firstNotNullOfOrNull { item ->
-                        val sunOutDt = DateTimeUtils.parseDateTime(item.entity.sunOut)
-                        if (sunOutDt != null && sunOutDt.toLocalDate() == date) {
+                        if (item.entity.forecastDate == prevDateStr && !item.entity.sunOut.isNullOrBlank()) {
                             item.entity.sunOut
                         } else null
                     } ?: parsedLocResults.firstNotNullOfOrNull { item ->
-                        if (item.entity.forecastDate == prevDateStr) item.entity.sunOut else null
+                        val sunOutDt = DateTimeUtils.parseDateTime(item.entity.sunOut)
+                        if (sunOutDt != null && sunOutDt.toLocalDate() == date && item.entity.forecastDate != dateStr) {
+                            item.entity.sunOut
+                        } else null
+                    } ?: parsedLocResults.firstNotNullOfOrNull { item ->
+                        if (item.entity.forecastDate == dateStr && !item.entity.sunOut.isNullOrBlank()) {
+                            item.entity.sunOut
+                        } else null
                     }
 
                     // 月齢(moonAge): 当日 date の夜の予報 (forecastDate == dateStr) から取得
                     val moonAge = parsedLocResults.firstNotNullOfOrNull { item ->
-                        if (item.entity.forecastDate == dateStr) item.entity.moonAge else null
+                        if (item.entity.forecastDate == dateStr && !item.entity.moonAge.isNullOrBlank()) {
+                            item.entity.moonAge
+                        } else null
+                    } ?: parsedLocResults.firstNotNullOfOrNull { item ->
+                        if (item.entity.forecastDate == prevDateStr && !item.entity.moonAge.isNullOrBlank()) {
+                            item.entity.moonAge
+                        } else null
                     }
 
                     val validResults = itemsForDate.map { it.entity }.filter { it.index >= 0 }

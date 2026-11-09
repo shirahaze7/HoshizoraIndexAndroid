@@ -41,6 +41,12 @@ object DateTimeUtils {
             return ldt.atZone(ZoneId.systemDefault()).toOffsetDateTime()
         } catch (_: DateTimeParseException) {}
 
+        // 3. LocalDate (年-月-日 または 年/月/日)
+        try {
+            val ld = LocalDate.parse(normalized)
+            return ld.atStartOfDay(ZoneId.systemDefault()).toOffsetDateTime()
+        } catch (_: DateTimeParseException) {}
+
         // 3. 年が含まれない 月-日T時:分 (例: 11-06T06:06:00 または 11-6T06:06)
         val currentYear = LocalDate.now().year
         try {

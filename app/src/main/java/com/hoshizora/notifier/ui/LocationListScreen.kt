@@ -108,7 +108,6 @@ import com.hoshizora.notifier.ui.theme.DarkOutline
 import com.hoshizora.notifier.ui.theme.SecondaryCyan
 import com.hoshizora.notifier.ui.theme.StarIndexColors
 import com.hoshizora.notifier.ui.theme.StarryBackground
-import com.hoshizora.notifier.util.DateTimeUtils
 import com.hoshizora.notifier.util.MoonUtils
 import com.hoshizora.notifier.worker.RefreshResult
 import kotlinx.coroutines.launch
@@ -916,12 +915,7 @@ private fun IndexChip(result: StarIndexResultEntity) {
     val bgColor = StarIndexColors.getBackgroundColor(index)
     val textColor = StarIndexColors.getTextColor(index)
 
-    val forecastDateLocal = result.forecastDate?.let {
-        try { java.time.LocalDate.parse(it) } catch (_: Exception) { null }
-    }
-    val parsedDt = DateTimeUtils.parseDateTime(result.datetime)
-    val isNextDayHour = parsedDt != null && forecastDateLocal != null && parsedDt.toLocalDate() != forecastDateLocal
-    val hourText = if (isNextDayHour) "翌${result.hour}時" else "${result.hour}時"
+    val hourText = "${result.hour}時"
 
     // 高指数(★3以上)の時のみパルスアニメーションを実行
     val shouldPulse = index >= 3

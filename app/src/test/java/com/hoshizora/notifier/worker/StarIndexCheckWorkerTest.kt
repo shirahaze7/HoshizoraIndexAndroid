@@ -214,15 +214,18 @@ class StarIndexCheckWorkerTest {
             if (date != null && date.isBefore(nowLocalDate)) {
                 return@mapNotNull null
             }
+            val dateStr = date?.toString()
             val prevDateStr = date?.minusDays(1)?.toString()
 
             val sunOutRaw = parsedResults.map { it.second }.firstNotNullOfOrNull { item ->
-                val sunOutDt = com.hoshizora.notifier.util.DateTimeUtils.parseDateTime(item.sunOut)
-                if (sunOutDt != null && sunOutDt.toLocalDate() == date) {
+                if (item.forecastDate == prevDateStr && !item.sunOut.isNullOrBlank()) {
                     item.sunOut
                 } else null
             } ?: parsedResults.map { it.second }.firstNotNullOfOrNull { item ->
-                if (item.forecastDate == prevDateStr) item.sunOut else null
+                val sunOutDt = com.hoshizora.notifier.util.DateTimeUtils.parseDateTime(item.sunOut)
+                if (sunOutDt != null && sunOutDt.toLocalDate() == date && item.forecastDate != dateStr) {
+                    item.sunOut
+                } else null
             }
 
             date to sunOutRaw
@@ -233,5 +236,123 @@ class StarIndexCheckWorkerTest {
         assertEquals(java.time.LocalDate.parse("2026-11-05"), formattedGrouped[0].first)
         // 11/5 の日の出は 11/4 予報から引き継いだ 06:05 であること
         assertEquals("2026-11-05T06:05:00+09:00", formattedGrouped[0].second)
+    }
+
+    @Test
+    fun groupedResults_handlesTimeOnlySunOutStrings_properlyUsesPreviousDayForecast() {
+        val nov4Placeholder = createEntity(
+            datetime = "2026-11-05T03:00:00+09:00",
+            index = -1,
+            forecastDate = "2026-11-04",
+            sunIn = "16:45",
+            sunOut = "06:05" // 前日(11/4)予報における11/5朝の日の出
+        )
+        val nov5Item = createEntity(
+            datetime = "2026-11-05T20:00:00+09:00",
+            index = 4,
+            forecastDate = "2026-11-05",
+            sunIn = "16:44",
+            sunOut = "06:06" // 当日(11/5)予報における11/6朝の日の出
+        )
+
+        val nowLocalDate = java.time.LocalDate.parse("2026-11-05")
+        val parsedResults = listOf(nov4Placeholder, nov5Item).map { entity ->
+            val parsedDt = com.hoshizora.notifier.util.DateTimeUtils.parseDateTime(entity.datetime)
+            val obsDate = entity.forecastDate?.let { fDateStr ->
+                try { java.time.LocalDate.parse(fDateStr) } catch (_: Exception) { null }
+            } ?: parsedDt?.let { dt ->
+                if (dt.hour < 5) dt.toLocalDate().minusDays(1) else dt.toLocalDate()
+            }
+            obsDate to entity
+        }
+
+        val groupedMap = parsedResults.groupBy({ it.first }, { it.second })
+            .toSortedMap(nullsLast(naturalOrder()))
+
+        val formattedGrouped = groupedMap.mapNotNull { (date, _) ->
+            if (date != null && date.isBefore(nowLocalDate)) {
+                return@mapNotNull null
+            }
+            val dateStr = date?.toString()
+            val prevDateStr = date?.minusDays(1)?.toString()
+
+            val sunOutRaw = parsedResults.map { it.second }.firstNotNullOfOrNull { item ->
+                if (item.forecastDate == prevDateStr && !item.sunOut.isNullOrBlank()) {
+                    item.sunOut
+                } else null
+            } ?: parsedResults.map { it.second }.firstNotNullOfOrNull { item ->
+                val sunOutDt = com.hoshizora.notifier.util.DateTimeUtils.parseDateTime(item.sunOut)
+                if (sunOutDt != null && sunOutDt.toLocalDate() == date && item.forecastDate != dateStr) {
+                    item.sunOut
+                } else null
+            } ?: parsedResults.map { it.second }.firstNotNullOfOrNull { item ->
+                if (item.forecastDate == dateStr && !item.sunOut.isNullOrBlank()) {
+                    item.sunOut
+                } else null
+            }
+
+            date to sunOutRaw
+        }
+
+        assertEquals(1, formattedGrouped.size)
+        assertEquals(java.time.LocalDate.parse("2026-11-05"), formattedGrouped[0].first)
+        // 時刻のみ文字列 "06:05" が11/5(今日)の日の出として正しく取得できること (11/5予報の "06:06" と誤認しない)
+        assertEquals("06:05", formattedGrouped[0].second)
+    }
+
+    @Test
+    fun groupedResults_fallbackToTodayForecast_whenPreviousDayForecastIsMissing() {
+        // 前日(11/4)の予報が存在せず、当日(11/5)の予報のみ取得された場合
+        val nov5Item = createEntity(
+            datetime = "2026-11-05T20:00:00+09:00",
+            index = 4,
+            forecastDate = "2026-11-05",
+            sunIn = "16:44",
+            sunOut = "06:06"
+        )
+
+        val nowLocalDate = java.time.LocalDate.parse("2026-11-05")
+        val parsedResults = listOf(nov5Item).map { entity ->
+            val parsedDt = com.hoshizora.notifier.util.DateTimeUtils.parseDateTime(entity.datetime)
+            val obsDate = entity.forecastDate?.let { fDateStr ->
+                try { java.time.LocalDate.parse(fDateStr) } catch (_: Exception) { null }
+            } ?: parsedDt?.let { dt ->
+                if (dt.hour < 5) dt.toLocalDate().minusDays(1) else dt.toLocalDate()
+            }
+            obsDate to entity
+        }
+
+        val groupedMap = parsedResults.groupBy({ it.first }, { it.second })
+            .toSortedMap(nullsLast(naturalOrder()))
+
+        val formattedGrouped = groupedMap.mapNotNull { (date, _) ->
+            if (date != null && date.isBefore(nowLocalDate)) {
+                return@mapNotNull null
+            }
+            val dateStr = date?.toString()
+            val prevDateStr = date?.minusDays(1)?.toString()
+
+            val sunOutRaw = parsedResults.map { it.second }.firstNotNullOfOrNull { item ->
+                if (item.forecastDate == prevDateStr && !item.sunOut.isNullOrBlank()) {
+                    item.sunOut
+                } else null
+            } ?: parsedResults.map { it.second }.firstNotNullOfOrNull { item ->
+                val sunOutDt = com.hoshizora.notifier.util.DateTimeUtils.parseDateTime(item.sunOut)
+                if (sunOutDt != null && sunOutDt.toLocalDate() == date && item.forecastDate != dateStr) {
+                    item.sunOut
+                } else null
+            } ?: parsedResults.map { it.second }.firstNotNullOfOrNull { item ->
+                if (item.forecastDate == dateStr && !item.sunOut.isNullOrBlank()) {
+                    item.sunOut
+                } else null
+            }
+
+            date to sunOutRaw
+        }
+
+        assertEquals(1, formattedGrouped.size)
+        assertEquals(java.time.LocalDate.parse("2026-11-05"), formattedGrouped[0].first)
+        // 前日予報が存在しない場合でも、当日予報の日の出 "06:06" がフォールバック表示され、空欄（日の出非表示）にならないこと
+        assertEquals("06:06", formattedGrouped[0].second)
     }
 }
