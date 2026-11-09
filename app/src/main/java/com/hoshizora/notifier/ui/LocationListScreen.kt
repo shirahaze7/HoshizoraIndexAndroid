@@ -57,8 +57,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -78,10 +76,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -132,7 +128,6 @@ fun LocationListScreen(
     val isFetchingLocation by viewModel.isFetchingLocation.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val selectedSortOption by viewModel.sortOption.collectAsState()
-    var sortMenuExpanded by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -242,58 +237,11 @@ fun LocationListScreen(
                     )
                 },
                 actions = {
-                    Box {
-                        IconButton(onClick = { sortMenuExpanded = true }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Sort,
-                                contentDescription = "並び替え"
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = sortMenuExpanded,
-                            onDismissRequest = { sortMenuExpanded = false }
-                        ) {
-                            LocationSortOption.entries.forEach { option ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            if (option == selectedSortOption) {
-                                                Icon(
-                                                    Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            } else {
-                                                Spacer(modifier = Modifier.size(18.dp))
-                                            }
-                                            Text(
-                                                text = option.displayName,
-                                                color = if (option == selectedSortOption) {
-                                                    MaterialTheme.colorScheme.primary
-                                                } else {
-                                                    MaterialTheme.colorScheme.onSurface
-                                                },
-                                                fontWeight = if (option == selectedSortOption) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        viewModel.updateSortOption(option)
-                                        sortMenuExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
                     IconButton(onClick = { viewModel.toggleSearchOpen() }) {
                         Icon(
                             Icons.Default.Search,
-                            contentDescription = "検索",
-                            tint = if (isSearchOpen || searchQuery.isNotEmpty() || maxDistanceKm != null) {
+                            contentDescription = "検索・並び替え",
+                            tint = if (isSearchOpen || searchQuery.isNotEmpty() || maxDistanceKm != null || selectedSortOption != LocationSortOption.REGISTERED) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.onSurface
@@ -421,8 +369,10 @@ fun LocationListScreen(
                         searchQuery = searchQuery,
                         currentLocation = currentLocation,
                         maxDistanceKm = maxDistanceKm,
+                        selectedSortOption = selectedSortOption,
                         isFetchingLocation = isFetchingLocation,
                         onQueryChange = { viewModel.updateSearchQuery(it) },
+                        onSortOptionChange = { viewModel.updateSortOption(it) },
                         onRequestLocation = { onRequestLocation() },
                         onClearLocation = { viewModel.updateCurrentLocation(null) },
                         onMaxDistanceChange = { viewModel.updateMaxDistanceKm(it) },
@@ -436,7 +386,7 @@ fun LocationListScreen(
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (searchQuery.isNotEmpty() || maxDistanceKm != null) {
+                        if (searchQuery.isNotEmpty() || maxDistanceKm != null || selectedSortOption != LocationSortOption.REGISTERED) {
                             Text(
                                 "検索条件に一致する地点が見つかりませんでした",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -510,8 +460,10 @@ private fun SearchPanel(
     searchQuery: String,
     currentLocation: android.location.Location?,
     maxDistanceKm: Double?,
+    selectedSortOption: LocationSortOption,
     isFetchingLocation: Boolean,
     onQueryChange: (String) -> Unit,
+    onSortOptionChange: (LocationSortOption) -> Unit,
     onRequestLocation: () -> Unit,
     onClearLocation: () -> Unit,
     onMaxDistanceChange: (Double?) -> Unit,
@@ -526,7 +478,7 @@ private fun SearchPanel(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // 地点名検索テキストフィールド
             OutlinedTextField(
@@ -547,6 +499,64 @@ private fun SearchPanel(
                 },
                 singleLine = true
             )
+
+            // 並び替えセクション
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Sort,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "並び替え",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    LocationSortOption.entries.forEach { option ->
+                        val isDistanceOption = (option == LocationSortOption.DISTANCE)
+                        val isEnabled = !isDistanceOption || (currentLocation != null)
+                        val selected = (option == selectedSortOption)
+
+                        FilterChip(
+                            selected = selected,
+                            enabled = isEnabled,
+                            onClick = { onSortOptionChange(option) },
+                            label = {
+                                Text(
+                                    text = if (isDistanceOption && currentLocation == null) {
+                                        "${option.displayName} (要現在地)"
+                                    } else {
+                                        option.displayName
+                                    }
+                                )
+                            },
+                            leadingIcon = if (selected) {
+                                {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            } else null
+                        )
+                    }
+                }
+            }
 
             // 現在地取得セクション
             Row(
@@ -609,6 +619,7 @@ private fun SearchPanel(
                 Text(
                     text = "現在地からの距離絞り込み",
                     style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
@@ -631,6 +642,7 @@ private fun SearchPanel(
                         val selected = (maxDistanceKm == dist)
                         FilterChip(
                             selected = selected,
+                            enabled = currentLocation != null || dist == null,
                             onClick = { onMaxDistanceChange(dist) },
                             label = { Text(label) }
                         )
@@ -651,6 +663,7 @@ private fun SearchPanel(
                                 text.toDoubleOrNull()?.let { onMaxDistanceChange(it) }
                             }
                         },
+                        enabled = currentLocation != null,
                         label = { Text("カスタム距離 (km)") },
                         placeholder = { Text("例: 15") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -664,7 +677,7 @@ private fun SearchPanel(
                             }
                         }
                     )
-                    if (searchQuery.isNotEmpty() || maxDistanceKm != null || currentLocation != null) {
+                    if (searchQuery.isNotEmpty() || maxDistanceKm != null || currentLocation != null || selectedSortOption != LocationSortOption.REGISTERED) {
                         TextButton(onClick = onResetFilters) {
                             Text("リセット")
                         }
