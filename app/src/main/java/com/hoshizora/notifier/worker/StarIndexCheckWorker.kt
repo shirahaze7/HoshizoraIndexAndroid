@@ -31,7 +31,11 @@ class StarIndexCheckWorker(
         Log.d(TAG, "StarIndexCheckWorker execution started.")
         return when (val result = StarIndexCheckRunner.runCheck(applicationContext)) {
             is RefreshResult.NoLocations,
-            is RefreshResult.Success -> Result.success()
+            is RefreshResult.Success -> {
+                // チャイニング方式: 成功時は明日の指定時刻に向けて再エンキュー
+                WorkScheduler.scheduleDaily(applicationContext, forceUpdate = true)
+                Result.success()
+            }
             is RefreshResult.Error -> {
                 Log.e(TAG, "Error occurred during StarIndexCheckWorker execution", result.exception)
                 Result.retry()

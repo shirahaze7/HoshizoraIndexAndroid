@@ -61,6 +61,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -107,6 +108,7 @@ import com.hoshizora.notifier.ui.theme.DarkOutline
 import com.hoshizora.notifier.ui.theme.SecondaryCyan
 import com.hoshizora.notifier.ui.theme.StarIndexColors
 import com.hoshizora.notifier.ui.theme.StarryBackground
+import com.hoshizora.notifier.util.MoonUtils
 import com.hoshizora.notifier.worker.RefreshResult
 import kotlinx.coroutines.launch
 import java.io.File
@@ -453,22 +455,48 @@ fun LocationListScreen(
                         }
                     }
                 } else {
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    PullToRefreshBox(
+                        isRefreshing = isRefreshing,
+                        onRefresh = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                            viewModel.refreshData(context) { result ->
+                                when (result) {
+                                    is RefreshResult.NoLocations -> {
+                                        Toast.makeText(context, "地点が登録されていません", Toast.LENGTH_SHORT).show()
+                                    }
+                                    is RefreshResult.Success -> {
+                                        val noteStatus = if (NotificationHelper.areNotificationsEnabled(context)) "" else "（※通知はオフです）"
+                                        Toast.makeText(context, "星空指数を最新情報に更新しました$noteStatus", Toast.LENGTH_SHORT).show()
+                                    }
+                                    is RefreshResult.Error -> {
+                                        Toast.makeText(context, "取得に失敗しました: ${result.exception.localizedMessage ?: "通信エラー"}", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        },
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(
-                            items = items,
-                            key = { it.location.id },
-                            contentType = { "location_card" }
-                        ) { item ->
-                            LocationCard(
-                                item = item,
-                                onOpenMap = { openGoogleMaps(context, item.location.lat, item.location.lon, item.location.name) },
-                                onEditClick = { onEditClick(item.location.id) },
-                                onDelete = { viewModel.delete(item.location) }
-                            )
+                        LazyColumn(
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(
+                                items = items,
+                                key = { it.location.id },
+                                contentType = { "location_card" }
+                            ) { item ->
+                                LocationCard(
+                                    item = item,
+                                    onOpenMap = { openGoogleMaps(context, item.location.lat, item.location.lon, item.location.name) },
+                                    onEditClick = { onEditClick(item.location.id) },
+                                    onDelete = { viewModel.delete(item.location) }
+                                )
+                            }
                         }
                     }
                 }
@@ -787,27 +815,82 @@ private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
         groupedResults.forEach { group ->
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (group.dateText.isNotEmpty()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = group.dateText,
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        if (group.relativeDayLabel != null) {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            ) {
-                                Text(
-                                    text = group.relativeDayLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 9.sp,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = group.dateText,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (group.relativeDayLabel != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ) {
+                                    Text(
+                                        text = group.relativeDayLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 9.sp,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // 月齢・日没・日の出表示バッジ
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            group.moonAge?.let { moon ->
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ) {
+                                    Text(
+                                        text = MoonUtils.formatMoonDisplay(moon),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 9.sp,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            group.sunIn?.let { sunIn ->
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ) {
+                                    Text(
+                                        text = "🌇日没 $sunIn",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 9.sp,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            group.sunOut?.let { sunOut ->
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ) {
+                                    Text(
+                                        text = "🌅日の出 $sunOut",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 9.sp,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -817,7 +900,7 @@ private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    group.results.forEach { result ->
+                    group.results.filter { it.index >= 0 }.forEach { result ->
                         IndexChip(result = result)
                     }
                 }
@@ -831,6 +914,8 @@ private fun IndexChip(result: StarIndexResultEntity) {
     val index = result.index.coerceIn(0, 4)
     val bgColor = StarIndexColors.getBackgroundColor(index)
     val textColor = StarIndexColors.getTextColor(index)
+
+    val hourText = "${result.hour}時"
 
     // 高指数(★3以上)の時のみパルスアニメーションを実行
     val shouldPulse = index >= 3
@@ -864,7 +949,7 @@ private fun IndexChip(result: StarIndexResultEntity) {
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
         ) {
             Text(
-                text = "${result.hour}時",
+                text = hourText,
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 10.sp
             )

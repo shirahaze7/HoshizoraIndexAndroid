@@ -12,6 +12,9 @@ interface StarIndexResultDao {
     @Query("SELECT * FROM star_index_results ORDER BY datetime ASC")
     fun observeAll(): Flow<List<StarIndexResultEntity>>
 
+    @Query("SELECT * FROM star_index_results WHERE locationId = :locationId")
+    suspend fun getForLocation(locationId: Long): List<StarIndexResultEntity>
+
     @Query("DELETE FROM star_index_results WHERE locationId = :locationId")
     suspend fun deleteForLocation(locationId: Long)
 

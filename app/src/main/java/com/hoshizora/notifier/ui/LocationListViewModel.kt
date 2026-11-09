@@ -46,7 +46,10 @@ data class ParsedStarIndexResult(
 data class FormattedGroupedResults(
     val dateText: String,
     val relativeDayLabel: String?,
-    val results: List<StarIndexResultEntity>
+    val results: List<StarIndexResultEntity>,
+    val sunIn: String? = null,
+    val sunOut: String? = null,
+    val moonAge: String? = null,
 )
 
 /** 地点情報と、その地点の直近取得結果(時間別)、および現在地からの距離(km)をまとめたもの */
@@ -131,13 +134,15 @@ class LocationListViewModel(context: Context) : ViewModel() {
             val cutoff = nowOffsetDateTime.minusHours(1)
 
             // 各エンティティのパースを一括事前計算 (O(N) 1回のみ)
+            // 実日付(parsedDateTimeのLocalDate)でグループ化
             val parsedResultsGrouped = results.groupBy { it.locationId }.mapValues { (_, list) ->
                 list.map { entity ->
                     val parsedDt = DateTimeUtils.parseDateTime(entity.datetime)
+                    val actualDate = parsedDt?.toLocalDate()
                     ParsedStarIndexResult(
                         entity = entity,
                         parsedDateTime = parsedDt,
-                        localDate = parsedDt?.toLocalDate()
+                        localDate = actualDate
                     )
                 }.sortedWith(compareBy(nullsLast()) { it.parsedDateTime })
             }
@@ -167,11 +172,16 @@ class LocationListViewModel(context: Context) : ViewModel() {
                     fetchedAtFormatter.format(Instant.ofEpochMilli(epochMillis))
                 }
 
-                // 事前パース結果を使ったグループ化
+                // 観測対象日(観測夜)ごとのグループ化
                 val groupedMap = parsedLocResults.groupBy { it.localDate }
                     .toSortedMap(nullsLast(naturalOrder()))
 
-                val formattedGrouped = groupedMap.map { (date, itemsForDate) ->
+                val formattedGrouped = groupedMap.mapNotNull { (date, itemsForDate) ->
+                    // 前日以前（今日より過去の日付）の段落は表示不要
+                    if (date != null && date.isBefore(nowLocalDate)) {
+                        return@mapNotNull null
+                    }
+
                     val dateText = date?.format(dateFormatter) ?: ""
                     val relativeLabel = when (date) {
                         nowLocalDate -> "今日"
@@ -179,10 +189,72 @@ class LocationListViewModel(context: Context) : ViewModel() {
                         nowLocalDate.plusDays(2) -> "明後日"
                         else -> null
                     }
+                    val dateStr = date?.toString()
+                    val prevDateStr = date?.minusDays(1)?.toString()
+
+                    // 日没(sunIn): 当日 date の夕方の日没
+                    // 1) forecastDate == dateStr (当日の予報) の sunIn
+                    // 2) なければ sunIn の日付が date と一致するもの
+                    // 3) なければ forecastDate == prevDateStr の sunIn
+                    val sunInRaw = parsedLocResults.firstNotNullOfOrNull { item ->
+                        if (item.entity.forecastDate == dateStr && !item.entity.sunIn.isNullOrBlank()) {
+                            item.entity.sunIn
+                        } else null
+                    } ?: parsedLocResults.firstNotNullOfOrNull { item ->
+                        val sunInDt = DateTimeUtils.parseDateTime(item.entity.sunIn)
+                        if (sunInDt != null && sunInDt.toLocalDate() == date) {
+                            item.entity.sunIn
+                        } else null
+                    } ?: parsedLocResults.firstNotNullOfOrNull { item ->
+                        if (item.entity.forecastDate == prevDateStr && !item.entity.sunIn.isNullOrBlank()) {
+                            item.entity.sunIn
+                        } else null
+                    }
+
+                    // 日の出(sunOut): 当日 date の早朝の日の出
+                    // 1) forecastDate == prevDateStr (前日夜の予報) の sunOut
+                    // 2) なければ sunOut の日付が date と一致し、かつ forecastDate != dateStr の sunOut
+                    // 3) なければ forecastDate == dateStr (当日の予報) の sunOut (前日予報が無い場合のフォールバック)
+                    val sunOutRaw = parsedLocResults.firstNotNullOfOrNull { item ->
+                        if (item.entity.forecastDate == prevDateStr && !item.entity.sunOut.isNullOrBlank()) {
+                            item.entity.sunOut
+                        } else null
+                    } ?: parsedLocResults.firstNotNullOfOrNull { item ->
+                        val sunOutDt = DateTimeUtils.parseDateTime(item.entity.sunOut)
+                        if (sunOutDt != null && sunOutDt.toLocalDate() == date && item.entity.forecastDate != dateStr) {
+                            item.entity.sunOut
+                        } else null
+                    } ?: parsedLocResults.firstNotNullOfOrNull { item ->
+                        if (item.entity.forecastDate == dateStr && !item.entity.sunOut.isNullOrBlank()) {
+                            item.entity.sunOut
+                        } else null
+                    }
+
+                    // 月齢(moonAge): 当日 date の夜の予報 (forecastDate == dateStr) から取得
+                    val moonAge = parsedLocResults.firstNotNullOfOrNull { item ->
+                        if (item.entity.forecastDate == dateStr && !item.entity.moonAge.isNullOrBlank()) {
+                            item.entity.moonAge
+                        } else null
+                    } ?: parsedLocResults.firstNotNullOfOrNull { item ->
+                        if (item.entity.forecastDate == prevDateStr && !item.entity.moonAge.isNullOrBlank()) {
+                            item.entity.moonAge
+                        } else null
+                    }
+
+                    val validResults = itemsForDate.map { it.entity }.filter { it.index >= 0 }
+
+                    // 星空指数データ(index >= 0)も太陽・月情報も無い空の段落は表示しない
+                    if (validResults.isEmpty() && sunInRaw == null && sunOutRaw == null && moonAge == null) {
+                        return@mapNotNull null
+                    }
+
                     FormattedGroupedResults(
                         dateText = dateText,
                         relativeDayLabel = relativeLabel,
-                        results = itemsForDate.map { it.entity }
+                        results = itemsForDate.map { it.entity },
+                        sunIn = DateTimeUtils.formatTimeOnly(sunInRaw),
+                        sunOut = DateTimeUtils.formatTimeOnly(sunOutRaw),
+                        moonAge = moonAge,
                     )
                 }
 
@@ -209,8 +281,8 @@ class LocationListViewModel(context: Context) : ViewModel() {
                         a.location.id.compareTo(b.location.id)
                     }
                     LocationSortOption.STAR_INDEX -> {
-                        val aFuture = aParsed.filter { it.parsedDateTime == null || !it.parsedDateTime.isBefore(cutoff) }
-                        val bFuture = bParsed.filter { it.parsedDateTime == null || !it.parsedDateTime.isBefore(cutoff) }
+                        val aFuture = aParsed.filter { it.entity.index >= 0 && (it.parsedDateTime == null || !it.parsedDateTime.isBefore(cutoff)) }
+                        val bFuture = bParsed.filter { it.entity.index >= 0 && (it.parsedDateTime == null || !it.parsedDateTime.isBefore(cutoff)) }
 
                         // 1. これからの最高指数 (高い順)
                         val aMax = aFuture.maxOfOrNull { it.entity.index } ?: -1

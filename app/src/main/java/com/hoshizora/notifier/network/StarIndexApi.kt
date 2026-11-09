@@ -9,6 +9,7 @@ interface StarIndexApi {
     suspend fun getStarIndex(
         @Query("lat") lat: Double,
         @Query("lon") lon: Double,
-        @Query("alt") alt: Double
+        @Query("alt") alt: Double,
+        @Query("date") date: String? = null
     ): StarIndexResponse
 }

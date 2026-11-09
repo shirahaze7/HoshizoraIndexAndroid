@@ -23,7 +23,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -35,17 +37,20 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -60,6 +65,7 @@ import com.hoshizora.notifier.data.SettingsRepository
 import com.hoshizora.notifier.notification.NotificationHelper
 import com.hoshizora.notifier.ui.theme.StarIndexColors
 import com.hoshizora.notifier.worker.WorkScheduler
+import java.util.Locale
 
 /** 選択可能な時間帯: 0時〜8時、18時〜23時 */
 private val SELECTABLE_HOURS: List<Int> = (0..8) + (18..23)
@@ -79,10 +85,12 @@ fun SettingsScreen(
     var selectedHours by remember {
         mutableStateOf(settings.targetHours.asSequence().filter { it in SELECTABLE_HOURS }.toSet())
     }
-    var runHour by remember { mutableStateOf(settings.runHour.toString()) }
-    var runMinute by remember { mutableStateOf(settings.runMinute.toString()) }
+    var runHourInt by remember { mutableIntStateOf(settings.runHour.coerceIn(0, 23)) }
+    var runMinuteInt by remember { mutableIntStateOf(settings.runMinute.coerceIn(0, 59)) }
     var notifyWhenNone by remember { mutableStateOf(settings.notifyWhenNone) }
     var fetchHours by remember { mutableFloatStateOf(settings.fetchHours.toFloat()) }
+
+    var showTimePickerDialog by remember { mutableStateOf(false) }
 
     var isNotificationEnabled by remember {
         mutableStateOf(NotificationHelper.areNotificationsEnabled(context))
@@ -289,7 +297,7 @@ fun SettingsScreen(
                 }
             }
 
-            // セクション 3: 実行時刻 & 通知
+            // セクション 3: 実行時刻 & 通知 (Material 3 TimePicker ダイアログ導入)
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -305,26 +313,50 @@ fun SettingsScreen(
                         "毎日の自動確認時刻",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+
+                    // タップして時刻を設定するM3スタイルのインターフェース
+                    Surface(
+                        onClick = { showTimePickerDialog = true },
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        OutlinedTextField(
-                            value = runHour,
-                            onValueChange = { runHour = it.filter { c -> c.isDigit() } },
-                            label = { Text("時") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f),
-                        )
-                        OutlinedTextField(
-                            value = runMinute,
-                            onValueChange = { runMinute = it.filter { c -> c.isDigit() } },
-                            label = { Text("分") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f),
-                        )
+                        Row(
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.AccessTime,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Column {
+                                    Text(
+                                        text = "自動実行予定時刻",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = String.format(Locale.JAPAN, "%02d:%02d", runHourInt, runMinuteInt),
+                                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { showTimePickerDialog = true },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("変更")
+                            }
+                        }
                     }
 
                     Row(
@@ -419,9 +451,8 @@ fun SettingsScreen(
                 onClick = {
                     settings.threshold = threshold.toInt()
                     settings.targetHours = selectedHours
-                    settings.runHour = runHour.toIntOrNull()?.coerceIn(0, 23)
-                        ?: SettingsRepository.DEFAULT_RUN_HOUR
-                    settings.runMinute = runMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0
+                    settings.runHour = runHourInt
+                    settings.runMinute = runMinuteInt
                     settings.notifyWhenNone = notifyWhenNone
                     settings.fetchHours = fetchHours.toInt()
                     WorkScheduler.scheduleDaily(context, forceUpdate = true)
@@ -438,5 +469,48 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+
+    // Material 3 TimePicker ダイアログ
+    if (showTimePickerDialog) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = runHourInt,
+            initialMinute = runMinuteInt,
+            is24Hour = true
+        )
+
+        AlertDialog(
+            onDismissRequest = { showTimePickerDialog = false },
+            title = {
+                Text(
+                    "自動確認時刻の変更",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    TimePicker(state = timePickerState)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        runHourInt = timePickerState.hour
+                        runMinuteInt = timePickerState.minute
+                        showTimePickerDialog = false
+                    }
+                ) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePickerDialog = false }) {
+                    Text("キャンセル")
+                }
+            }
+        )
     }
 }

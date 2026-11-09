@@ -16,6 +16,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 sealed interface RefreshResult {
@@ -77,8 +78,22 @@ object StarIndexCheckRunner {
                         continue
                     }
 
+                    val yesterdayStr = today.minusDays(1).toString()
+                    val hasYesterday = hourlyResults.any { it.forecastDate == yesterdayStr }
+                    val finalHourlyResults = if (!hasYesterday) {
+                        val existingYesterday = db.starIndexResultDao().getForLocation(loc.id)
+                            .filter { it.forecastDate == yesterdayStr }
+                        if (existingYesterday.isNotEmpty()) {
+                            hourlyResults + existingYesterday
+                        } else {
+                            hourlyResults
+                        }
+                    } else {
+                        hourlyResults
+                    }
+
                     // ホーム画面表示用に、この地点の結果を丸ごと置き換え
-                    db.starIndexResultDao().replaceForLocation(loc.id, hourlyResults)
+                    db.starIndexResultDao().replaceForLocation(loc.id, finalHourlyResults)
 
                     // まず「今夜」(dayOffset = 0) のデータのみを評価
                     val tonightResults = StarIndexCheckWorker.filterNightResults(hourlyResults, now, dayOffset = 0)
@@ -192,6 +207,13 @@ object StarIndexCheckRunner {
         val results = mutableListOf<StarIndexResultEntity>()
 
         for (entry in entries) {
+            val rawStart = entry.startDatetime.trim()
+            val forecastDateStr = DateTimeUtils.parseDateTime(rawStart)?.toLocalDate()?.toString()
+                ?: run {
+                    val datePart = rawStart.substringBefore('T').substringBefore(' ').replace('/', '-')
+                    try { LocalDate.parse(datePart).toString() } catch (_: Exception) { null }
+                }
+            var addedCount = 0
             for (item in entry.starlightIndex) {
                 val dt = DateTimeUtils.parseDateTime(item.datetime)
                 if (dt == null) {
@@ -210,11 +232,98 @@ object StarIndexCheckRunner {
                         isNextDay = dt.toLocalDate() != today,
                         index = item.index,
                         fetchedAt = fetchedAt,
+                        sunIn = entry.sunIn,
+                        sunOut = entry.sunOut,
+                        moonAge = entry.moonAge,
+                        forecastDate = forecastDateStr,
                     ),
                 )
+                addedCount++
+            }
+
+            // この DayEntry から対象時間帯のアイテムが 1 件も採択されなかった場合でも、
+            // 当該 DayEntry の日の出・日没・月齢情報を保持するためにダミーレコード (index = -1) を 1 件保持する
+            if (addedCount == 0) {
+                val repDatetime = entry.starlightIndex.firstOrNull()?.datetime ?: entry.startDatetime
+                val dt = DateTimeUtils.parseDateTime(repDatetime)
+                if (dt != null) {
+                    results.add(
+                        StarIndexResultEntity(
+                            locationId = loc.id,
+                            datetime = repDatetime,
+                            hour = dt.hour,
+                            isNextDay = dt.toLocalDate() != today,
+                            index = -1,
+                            fetchedAt = fetchedAt,
+                            sunIn = entry.sunIn,
+                            sunOut = entry.sunOut,
+                            moonAge = entry.moonAge,
+                            forecastDate = forecastDateStr,
+                        ),
+                    )
+                }
+            }
+        }
+
+        val yesterday = today.minusDays(1)
+        val yesterdayStr = yesterday.toString()
+        val hasYesterday = results.any { it.forecastDate == yesterdayStr }
+        if (!hasYesterday) {
+            val yesterdayEntity = fetchYesterdayEntry(loc, yesterday, fetchedAt)
+            if (yesterdayEntity != null) {
+                results.add(yesterdayEntity)
             }
         }
 
         return results.distinctBy { it.datetime }.sortedBy { it.datetime }
+    }
+
+    private suspend fun fetchYesterdayEntry(
+        loc: LocationEntity,
+        yesterday: LocalDate,
+        fetchedAt: Long,
+    ): StarIndexResultEntity? {
+        val yesterdayStr = yesterday.toString()
+        val yesterdayBasicIso = yesterday.format(DateTimeFormatter.BASIC_ISO_DATE)
+
+        val dateParams = listOf(yesterdayStr, yesterdayBasicIso)
+        for (dateParam in dateParams) {
+            val response = try {
+                RetrofitClient.api.getStarIndex(loc.lat, loc.lon, loc.alt, date = dateParam)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch yesterday starlight index for location ${loc.name} (date=$dateParam)", e)
+                null
+            } ?: continue
+
+            val entries = response.resultList.data
+            if (entries.isEmpty()) continue
+
+            val entry = entries.firstOrNull { entry ->
+                val rawStart = entry.startDatetime.trim()
+                val entryDate = DateTimeUtils.parseDateTime(rawStart)?.toLocalDate()
+                    ?: run {
+                        val datePart = rawStart.substringBefore('T').substringBefore(' ').replace('/', '-')
+                        try { LocalDate.parse(datePart) } catch (_: Exception) { null }
+                    }
+                entryDate == yesterday
+            } ?: entries.firstOrNull() ?: continue
+
+            val repDatetime = entry.starlightIndex.firstOrNull()?.datetime ?: entry.startDatetime
+            val dt = DateTimeUtils.parseDateTime(repDatetime)
+
+            return StarIndexResultEntity(
+                locationId = loc.id,
+                datetime = repDatetime,
+                hour = dt?.hour ?: 0,
+                isNextDay = false,
+                index = -1,
+                fetchedAt = fetchedAt,
+                sunIn = entry.sunIn,
+                sunOut = entry.sunOut,
+                moonAge = entry.moonAge,
+                forecastDate = yesterdayStr,
+            )
+        }
+        return null
     }
 }
