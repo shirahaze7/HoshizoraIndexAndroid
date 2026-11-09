@@ -864,20 +864,6 @@ private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
                                     )
                                 }
                             }
-                            group.sunIn?.let { sunIn ->
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ) {
-                                    Text(
-                                        text = "🌇日没 $sunIn",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 9.sp,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
                             group.sunOut?.let { sunOut ->
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
@@ -886,6 +872,20 @@ private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
                                 ) {
                                     Text(
                                         text = "🌅日の出 $sunOut",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 9.sp,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            group.sunIn?.let { sunIn ->
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                ) {
+                                    Text(
+                                        text = "🌇日没 $sunIn",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontSize = 9.sp,
                                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)

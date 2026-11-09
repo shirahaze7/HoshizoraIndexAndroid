@@ -244,7 +244,10 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Slider(
                         value = threshold,
-                        onValueChange = { threshold = it },
+                        onValueChange = {
+                            threshold = it
+                            settings.threshold = it.toInt()
+                        },
                         valueRange = 0f..4f,
                         steps = 3,
                     )
@@ -275,11 +278,13 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = isSelected,
                                 onClick = {
-                                    selectedHours = if (isSelected) {
+                                    val updated = if (isSelected) {
                                         selectedHours - hour
                                     } else {
                                         selectedHours + hour
                                     }
+                                    selectedHours = updated
+                                    settings.targetHours = updated
                                 },
                                 label = {
                                     Text(
@@ -370,7 +375,10 @@ fun SettingsScreen(
                         )
                         Switch(
                             checked = notifyWhenNone,
-                            onCheckedChange = { notifyWhenNone = it },
+                            onCheckedChange = {
+                                notifyWhenNone = it
+                                settings.notifyWhenNone = it
+                            },
                         )
                     }
                 }
@@ -398,7 +406,10 @@ fun SettingsScreen(
                     )
                     Slider(
                         value = fetchHours,
-                        onValueChange = { fetchHours = it },
+                        onValueChange = {
+                            fetchHours = it
+                            settings.fetchHours = it.toInt()
+                        },
                         valueRange = 8f..72f,
                         steps = 7,
                     )
@@ -446,28 +457,6 @@ fun SettingsScreen(
                     }
                 }
             }
-
-            Button(
-                onClick = {
-                    settings.threshold = threshold.toInt()
-                    settings.targetHours = selectedHours
-                    settings.runHour = runHourInt
-                    settings.runMinute = runMinuteInt
-                    settings.notifyWhenNone = notifyWhenNone
-                    settings.fetchHours = fetchHours.toInt()
-                    WorkScheduler.scheduleDaily(context, forceUpdate = true)
-                    onDone()
-                },
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-            ) {
-                Text(
-                    "設定を保存",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-            }
         }
     }
 
@@ -500,6 +489,9 @@ fun SettingsScreen(
                     onClick = {
                         runHourInt = timePickerState.hour
                         runMinuteInt = timePickerState.minute
+                        settings.runHour = timePickerState.hour
+                        settings.runMinute = timePickerState.minute
+                        WorkScheduler.scheduleDaily(context, forceUpdate = true)
                         showTimePickerDialog = false
                     }
                 ) {
