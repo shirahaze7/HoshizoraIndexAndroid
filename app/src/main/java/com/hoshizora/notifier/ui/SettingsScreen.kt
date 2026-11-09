@@ -1,10 +1,13 @@
 package com.hoshizora.notifier.ui
 
 import android.Manifest
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +27,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -53,6 +58,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,10 +67,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hoshizora.notifier.data.SettingsRepository
 import com.hoshizora.notifier.notification.NotificationHelper
 import com.hoshizora.notifier.ui.theme.StarIndexColors
 import com.hoshizora.notifier.worker.WorkScheduler
+import kotlinx.coroutines.launch
+import java.io.File
 import java.util.Locale
 
 /** 選択可能な時間帯: 0時〜8時、18時〜23時 */
@@ -76,10 +86,35 @@ private fun hourLabel(hour: Int): String = "${hour}時"
 @Composable
 fun SettingsScreen(
     onDone: () -> Unit,
-    onOpenOnboarding: () -> Unit
+    onOpenOnboarding: () -> Unit,
+    viewModel: LocationListViewModel = viewModel(
+        factory = LocationListViewModel.factory(LocalContext.current.applicationContext)
+    )
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val settings = remember { SettingsRepository(context) }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        uri?.let {
+            val json = context.contentResolver.openInputStream(it)?.use { stream ->
+                stream.bufferedReader().readText()
+            }
+            json?.let { content ->
+                viewModel.importFromJson(
+                    json = content,
+                    onSuccess = {
+                        Toast.makeText(context, "インポートしました", Toast.LENGTH_SHORT).show()
+                    },
+                    onError = { error ->
+                        Toast.makeText(context, "エラー: ${error.message}", Toast.LENGTH_LONG).show()
+                    },
+                )
+            }
+        }
+    }
 
     var threshold by remember { mutableFloatStateOf(settings.threshold.toFloat()) }
     var selectedHours by remember {
@@ -244,7 +279,10 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Slider(
                         value = threshold,
-                        onValueChange = { threshold = it },
+                        onValueChange = {
+                            threshold = it
+                            settings.threshold = it.toInt()
+                        },
                         valueRange = 0f..4f,
                         steps = 3,
                     )
@@ -275,11 +313,13 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = isSelected,
                                 onClick = {
-                                    selectedHours = if (isSelected) {
+                                    val updated = if (isSelected) {
                                         selectedHours - hour
                                     } else {
                                         selectedHours + hour
                                     }
+                                    selectedHours = updated
+                                    settings.targetHours = updated
                                 },
                                 label = {
                                     Text(
@@ -370,7 +410,10 @@ fun SettingsScreen(
                         )
                         Switch(
                             checked = notifyWhenNone,
-                            onCheckedChange = { notifyWhenNone = it },
+                            onCheckedChange = {
+                                notifyWhenNone = it
+                                settings.notifyWhenNone = it
+                            },
                         )
                     }
                 }
@@ -398,7 +441,10 @@ fun SettingsScreen(
                     )
                     Slider(
                         value = fetchHours,
-                        onValueChange = { fetchHours = it },
+                        onValueChange = {
+                            fetchHours = it
+                            settings.fetchHours = it.toInt()
+                        },
                         valueRange = 8f..72f,
                         steps = 7,
                     )
@@ -410,7 +456,83 @@ fun SettingsScreen(
                 }
             }
 
-            // セクション 5: チュートリアル / ガイド
+            // セクション 5: データのバックアップ・復元
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "データのバックアップ・復元",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Text(
+                        "登録されている監視地点データをJSONファイルとしてエクスポート・インポートできます。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    try {
+                                        val json = viewModel.exportToJson()
+                                        val cacheFile = File(context.cacheDir, "hoshizora_locations.json")
+                                        cacheFile.writeText(json)
+
+                                        val contentUri: Uri = FileProvider.getUriForFile(
+                                            context.applicationContext,
+                                            "${context.packageName}.fileprovider",
+                                            cacheFile
+                                        )
+
+                                        val intent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "application/json"
+                                            putExtra(Intent.EXTRA_STREAM, contentUri)
+                                            clipData = ClipData.newRawUri("Locations JSON", contentUri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        val chooser = Intent.createChooser(intent, "JSONとしてエクスポート")
+                                        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(chooser)
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        Toast.makeText(context, "エクスポート失敗: ${e.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.FileUpload, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("エクスポート")
+                        }
+
+                        OutlinedButton(
+                            onClick = { importLauncher.launch("application/json") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.FileDownload, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("インポート")
+                        }
+                    }
+                }
+            }
+
+            // セクション 6: チュートリアル / ガイド
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -446,28 +568,6 @@ fun SettingsScreen(
                     }
                 }
             }
-
-            Button(
-                onClick = {
-                    settings.threshold = threshold.toInt()
-                    settings.targetHours = selectedHours
-                    settings.runHour = runHourInt
-                    settings.runMinute = runMinuteInt
-                    settings.notifyWhenNone = notifyWhenNone
-                    settings.fetchHours = fetchHours.toInt()
-                    WorkScheduler.scheduleDaily(context, forceUpdate = true)
-                    onDone()
-                },
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-            ) {
-                Text(
-                    "設定を保存",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-            }
         }
     }
 
@@ -500,6 +600,9 @@ fun SettingsScreen(
                     onClick = {
                         runHourInt = timePickerState.hour
                         runMinuteInt = timePickerState.minute
+                        settings.runHour = timePickerState.hour
+                        settings.runMinute = timePickerState.minute
+                        WorkScheduler.scheduleDaily(context, forceUpdate = true)
                         showTimePickerDialog = false
                     }
                 ) {

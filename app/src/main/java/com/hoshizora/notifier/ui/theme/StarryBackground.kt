@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -19,8 +20,13 @@ data class Star(
     val initialPhase: Float
 )
 
+private val GlowColor = Color(0xFF7DD3FC)
+
 @Composable
-fun StarryBackground(modifier: Modifier = Modifier) {
+fun StarryBackground(
+    modifier: Modifier = Modifier,
+    isPaused: Boolean = false
+) {
     val stars = remember {
         List(80) {
             val speed = Random.nextFloat() * 2000f + 1000f
@@ -34,23 +40,28 @@ fun StarryBackground(modifier: Modifier = Modifier) {
         }
     }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "starTwinkle")
-    val timeState = infiniteTransition.animateFloat(
+    val infiniteTransition = rememberInfiniteTransition(label = "StarryBackground")
+    val animatedTime by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 6.28f,
+        targetValue = 6.2831855f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 4000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "time"
+        label = "StarryTime"
     )
+
+    var lastActiveTime by remember { mutableFloatStateOf(0f) }
+    if (!isPaused) {
+        lastActiveTime = animatedTime
+    }
+    val time = lastActiveTime
 
     Box(
         modifier = modifier
             .fillMaxSize()
+            .graphicsLayer() // GPUレイヤー化し、他コンポーネントの再描画領域と分離
             .drawBehind {
-                // timeState.value を Draw フェーズ内のみで読み込むことで Recomposition を回避！
-                val time = timeState.value
                 val width = size.width
                 val height = size.height
 
@@ -61,9 +72,10 @@ fun StarryBackground(modifier: Modifier = Modifier) {
                     val twinkle = sin((time * star.twinkleFactor) + star.initialPhase)
                     val alpha = (0.2f + (twinkle + 1f) * 0.4f).coerceIn(0.2f, 1f)
 
-                    // 星のコア
+                    // 星のコア（DrawScopeのalpha引数を使用し、毎フレームのColorインスタンス生成＝GCを防止）
                     drawCircle(
-                        color = Color.White.copy(alpha = alpha),
+                        color = Color.White,
+                        alpha = alpha,
                         radius = star.size,
                         center = Offset(x, y)
                     )
@@ -71,7 +83,8 @@ fun StarryBackground(modifier: Modifier = Modifier) {
                     // 星のグロー
                     if (alpha > 0.6f) {
                         drawCircle(
-                            color = Color(0xFF7DD3FC).copy(alpha = (alpha - 0.6f) * 0.3f),
+                            color = GlowColor,
+                            alpha = (alpha - 0.6f) * 0.3f,
                             radius = star.size * 2f,
                             center = Offset(x, y)
                         )

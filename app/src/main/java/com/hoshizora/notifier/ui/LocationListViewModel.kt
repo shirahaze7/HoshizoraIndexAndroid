@@ -343,6 +343,9 @@ class LocationListViewModel(context: Context) : ViewModel() {
         }.flowOn(Dispatchers.Default)
 
     fun updateSortOption(option: LocationSortOption) {
+        if (option == LocationSortOption.DISTANCE && _currentLocation.value == null) {
+            return
+        }
         _sortOption.value = option
         settingsRepository.sortOption = option
     }
@@ -361,6 +364,9 @@ class LocationListViewModel(context: Context) : ViewModel() {
 
     fun updateCurrentLocation(location: Location?) {
         _currentLocation.value = location
+        if (location == null && _sortOption.value == LocationSortOption.DISTANCE) {
+            updateSortOption(LocationSortOption.REGISTERED)
+        }
     }
 
     fun setFetchingLocation(isFetching: Boolean) {
@@ -370,6 +376,7 @@ class LocationListViewModel(context: Context) : ViewModel() {
     fun clearSearchFilter() {
         _searchQuery.value = ""
         _maxDistanceKm.value = null
+        updateSortOption(LocationSortOption.REGISTERED)
     }
 
     fun refreshData(context: Context, onResult: (RefreshResult) -> Unit = {}) {

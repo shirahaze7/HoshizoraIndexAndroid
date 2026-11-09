@@ -1,7 +1,6 @@
 package com.hoshizora.notifier.ui
 
 import android.Manifest
-import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -20,6 +19,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -48,8 +49,6 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -57,8 +56,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -69,7 +66,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -78,10 +74,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -96,7 +89,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.location.LocationServices
@@ -110,8 +102,6 @@ import com.hoshizora.notifier.ui.theme.StarIndexColors
 import com.hoshizora.notifier.ui.theme.StarryBackground
 import com.hoshizora.notifier.util.MoonUtils
 import com.hoshizora.notifier.worker.RefreshResult
-import kotlinx.coroutines.launch
-import java.io.File
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -132,10 +122,8 @@ fun LocationListScreen(
     val isFetchingLocation by viewModel.isFetchingLocation.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val selectedSortOption by viewModel.sortOption.collectAsState()
-    var sortMenuExpanded by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     val fusedLocationClient = remember {
         LocationServices.getFusedLocationProviderClient(context)
@@ -203,26 +191,7 @@ fun LocationListScreen(
         }
     }
 
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri: Uri? ->
-        uri?.let {
-            val json = context.contentResolver.openInputStream(it)?.use { stream ->
-                stream.bufferedReader().readText()
-            }
-            json?.let { content ->
-                viewModel.importFromJson(
-                    json = content,
-                    onSuccess = {
-                        Toast.makeText(context, "インポートしました", Toast.LENGTH_SHORT).show()
-                    },
-                    onError = { error ->
-                        Toast.makeText(context, "エラー: ${error.message}", Toast.LENGTH_LONG).show()
-                    },
-                )
-            }
-        }
-    }
+
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -231,6 +200,33 @@ fun LocationListScreen(
             Toast.makeText(context, "通知権限が無効のため、通知が配信されない可能性があります", Toast.LENGTH_LONG).show()
         }
     }
+
+    // カードの発光・チップの拡大で共通利用する単一の無限アニメーションクロック（アニメーションインスタンスの乱立を防ぐ）
+    val infiniteTransition = rememberInfiniteTransition(label = "sharedAnimations")
+    val cardGlowAlphaState = infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowAlpha"
+    )
+    val chipPulseScaleState = infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+
+    // ラムダオブジェクトの再生成（アロケーション）を防止し、安定したプロバイダとして保持
+    val cardGlowAlphaProvider = remember { { cardGlowAlphaState.value } }
+    val chipPulseScaleProvider = remember { { chipPulseScaleState.value } }
+
+    val listState = rememberLazyListState()
 
     Scaffold(
         topBar = {
@@ -242,58 +238,11 @@ fun LocationListScreen(
                     )
                 },
                 actions = {
-                    Box {
-                        IconButton(onClick = { sortMenuExpanded = true }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Sort,
-                                contentDescription = "並び替え"
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = sortMenuExpanded,
-                            onDismissRequest = { sortMenuExpanded = false }
-                        ) {
-                            LocationSortOption.entries.forEach { option ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            if (option == selectedSortOption) {
-                                                Icon(
-                                                    Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            } else {
-                                                Spacer(modifier = Modifier.size(18.dp))
-                                            }
-                                            Text(
-                                                text = option.displayName,
-                                                color = if (option == selectedSortOption) {
-                                                    MaterialTheme.colorScheme.primary
-                                                } else {
-                                                    MaterialTheme.colorScheme.onSurface
-                                                },
-                                                fontWeight = if (option == selectedSortOption) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        viewModel.updateSortOption(option)
-                                        sortMenuExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
                     IconButton(onClick = { viewModel.toggleSearchOpen() }) {
                         Icon(
                             Icons.Default.Search,
-                            contentDescription = "検索",
-                            tint = if (isSearchOpen || searchQuery.isNotEmpty() || maxDistanceKm != null) {
+                            contentDescription = "検索・並び替え",
+                            tint = if (isSearchOpen || searchQuery.isNotEmpty() || maxDistanceKm != null || selectedSortOption != LocationSortOption.REGISTERED) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.onSurface
@@ -346,65 +295,18 @@ fun LocationListScreen(
             )
         },
         floatingActionButton = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            FloatingActionButton(
+                onClick = onAddClick,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
-                SmallFloatingActionButton(
-                    onClick = {
-                        scope.launch {
-                            try {
-                                val json = viewModel.exportToJson()
-                                val cacheFile = File(context.cacheDir, "hoshizora_locations.json")
-                                cacheFile.writeText(json)
-
-                                val contentUri: Uri = FileProvider.getUriForFile(
-                                    context.applicationContext,
-                                    "${context.packageName}.fileprovider",
-                                    cacheFile
-                                )
-
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "application/json"
-                                    putExtra(Intent.EXTRA_STREAM, contentUri)
-                                    clipData = ClipData.newRawUri("Locations JSON", contentUri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                val chooser = Intent.createChooser(intent, "JSONとしてエクスポート")
-                                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(chooser)
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                                Toast.makeText(context, "エクスポート失敗: ${e.message}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    },
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                ) {
-                    Icon(Icons.Default.FileUpload, contentDescription = "エクスポート")
-                }
-                SmallFloatingActionButton(
-                    onClick = { importLauncher.launch("application/json") },
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                ) {
-                    Icon(Icons.Default.FileDownload, contentDescription = "インポート")
-                }
-                FloatingActionButton(
-                    onClick = onAddClick,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "地点を追加")
-                }
+                Icon(Icons.Default.Add, contentDescription = "地点を追加")
             }
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize()) {
-            // 星空背景
-            StarryBackground()
+            // 星空背景 (スクロール中はアニメーション描画を一時停止してリストの120FPS滑らかスクロールを最優先)
+            StarryBackground(isPaused = listState.isScrollInProgress)
 
             Column(
                 modifier = Modifier
@@ -421,8 +323,10 @@ fun LocationListScreen(
                         searchQuery = searchQuery,
                         currentLocation = currentLocation,
                         maxDistanceKm = maxDistanceKm,
+                        selectedSortOption = selectedSortOption,
                         isFetchingLocation = isFetchingLocation,
                         onQueryChange = { viewModel.updateSearchQuery(it) },
+                        onSortOptionChange = { viewModel.updateSortOption(it) },
                         onRequestLocation = { onRequestLocation() },
                         onClearLocation = { viewModel.updateCurrentLocation(null) },
                         onMaxDistanceChange = { viewModel.updateMaxDistanceKm(it) },
@@ -436,7 +340,7 @@ fun LocationListScreen(
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (searchQuery.isNotEmpty() || maxDistanceKm != null) {
+                        if (searchQuery.isNotEmpty() || maxDistanceKm != null || selectedSortOption != LocationSortOption.REGISTERED) {
                             Text(
                                 "検索条件に一致する地点が見つかりませんでした",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -481,6 +385,7 @@ fun LocationListScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         LazyColumn(
+                            state = listState,
                             contentPadding = PaddingValues(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxSize()
@@ -492,6 +397,8 @@ fun LocationListScreen(
                             ) { item ->
                                 LocationCard(
                                     item = item,
+                                    cardGlowAlphaProvider = cardGlowAlphaProvider,
+                                    chipPulseScaleProvider = chipPulseScaleProvider,
                                     onOpenMap = { openGoogleMaps(context, item.location.lat, item.location.lon, item.location.name) },
                                     onEditClick = { onEditClick(item.location.id) },
                                     onDelete = { viewModel.delete(item.location) }
@@ -510,8 +417,10 @@ private fun SearchPanel(
     searchQuery: String,
     currentLocation: android.location.Location?,
     maxDistanceKm: Double?,
+    selectedSortOption: LocationSortOption,
     isFetchingLocation: Boolean,
     onQueryChange: (String) -> Unit,
+    onSortOptionChange: (LocationSortOption) -> Unit,
     onRequestLocation: () -> Unit,
     onClearLocation: () -> Unit,
     onMaxDistanceChange: (Double?) -> Unit,
@@ -526,7 +435,7 @@ private fun SearchPanel(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // 地点名検索テキストフィールド
             OutlinedTextField(
@@ -547,6 +456,64 @@ private fun SearchPanel(
                 },
                 singleLine = true
             )
+
+            // 並び替えセクション
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Sort,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "並び替え",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    LocationSortOption.entries.forEach { option ->
+                        val isDistanceOption = (option == LocationSortOption.DISTANCE)
+                        val isEnabled = !isDistanceOption || (currentLocation != null)
+                        val selected = (option == selectedSortOption)
+
+                        FilterChip(
+                            selected = selected,
+                            enabled = isEnabled,
+                            onClick = { onSortOptionChange(option) },
+                            label = {
+                                Text(
+                                    text = if (isDistanceOption && currentLocation == null) {
+                                        "${option.displayName} (要現在地)"
+                                    } else {
+                                        option.displayName
+                                    }
+                                )
+                            },
+                            leadingIcon = if (selected) {
+                                {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            } else null
+                        )
+                    }
+                }
+            }
 
             // 現在地取得セクション
             Row(
@@ -609,6 +576,7 @@ private fun SearchPanel(
                 Text(
                     text = "現在地からの距離絞り込み",
                     style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
@@ -631,6 +599,7 @@ private fun SearchPanel(
                         val selected = (maxDistanceKm == dist)
                         FilterChip(
                             selected = selected,
+                            enabled = currentLocation != null || dist == null,
                             onClick = { onMaxDistanceChange(dist) },
                             label = { Text(label) }
                         )
@@ -651,6 +620,7 @@ private fun SearchPanel(
                                 text.toDoubleOrNull()?.let { onMaxDistanceChange(it) }
                             }
                         },
+                        enabled = currentLocation != null,
                         label = { Text("カスタム距離 (km)") },
                         placeholder = { Text("例: 15") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -664,7 +634,7 @@ private fun SearchPanel(
                             }
                         }
                     )
-                    if (searchQuery.isNotEmpty() || maxDistanceKm != null || currentLocation != null) {
+                    if (searchQuery.isNotEmpty() || maxDistanceKm != null || currentLocation != null || selectedSortOption != LocationSortOption.REGISTERED) {
                         TextButton(onClick = onResetFilters) {
                             Text("リセット")
                         }
@@ -678,27 +648,12 @@ private fun SearchPanel(
 @Composable
 private fun LocationCard(
     item: LocationWithResults,
+    cardGlowAlphaProvider: () -> Float,
+    chipPulseScaleProvider: () -> Float,
     onOpenMap: () -> Unit,
     onEditClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    // 高指数(hasHighIndex)の場合のアルファアニメーション
-    // state を Draw フェーズ(drawWithContent)でのみ参照することで、Recomposition をゼロに抑える！
-    val borderAlphaState = if (item.hasHighIndex) {
-        val infiniteTransition = rememberInfiniteTransition(label = "cardGlow")
-        infiniteTransition.animateFloat(
-            initialValue = 0.5f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "glowAlpha"
-        )
-    } else {
-        null
-    }
-
     val hasHighIndex = item.hasHighIndex
     val cornerRadius = 12.dp
 
@@ -708,11 +663,13 @@ private fun LocationCard(
             .drawWithContent {
                 drawContent()
                 val strokeWidth = if (hasHighIndex) 2.dp.toPx() else 1.dp.toPx()
-                val alpha = borderAlphaState?.value ?: 1f
-                val color = if (hasHighIndex) SecondaryCyan.copy(alpha = alpha) else DarkOutline.copy(alpha = 0.5f)
+                val alpha = if (hasHighIndex) cardGlowAlphaProvider() else 1f
+                val color = if (hasHighIndex) SecondaryCyan else DarkOutline
+                val drawAlpha = if (hasHighIndex) alpha else 0.5f
                 val halfStroke = strokeWidth / 2f
                 drawRoundRect(
                     color = color,
+                    alpha = drawAlpha,
                     topLeft = Offset(halfStroke, halfStroke),
                     size = Size(size.width - strokeWidth, size.height - strokeWidth),
                     cornerRadius = CornerRadius(cornerRadius.toPx()),
@@ -738,18 +695,18 @@ private fun LocationCard(
                     )
                     if (item.distanceText != null) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ) {
-                            Text(
-                                text = item.distanceText,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
+                        Text(
+                            text = item.distanceText,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier
+                                .background(
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    shape = RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -799,7 +756,10 @@ private fun LocationCard(
                         modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
                     )
                 }
-                HourlyIndexList(item.groupedResults)
+                HourlyIndexList(
+                    groupedResults = item.groupedResults,
+                    chipPulseScaleProvider = chipPulseScaleProvider
+                )
             }
         }
     }
@@ -807,7 +767,10 @@ private fun LocationCard(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
+private fun HourlyIndexList(
+    groupedResults: List<FormattedGroupedResults>,
+    chipPulseScaleProvider: () -> Float
+) {
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxWidth()
@@ -830,18 +793,18 @@ private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
                                 color = MaterialTheme.colorScheme.primary
                             )
                             if (group.relativeDayLabel != null) {
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                ) {
-                                    Text(
-                                        text = group.relativeDayLabel,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 9.sp,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                    )
-                                }
+                                Text(
+                                    text = group.relativeDayLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
                             }
                         }
 
@@ -851,57 +814,62 @@ private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             group.moonAge?.let { moon ->
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ) {
-                                    Text(
-                                        text = MoonUtils.formatMoonDisplay(moon),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 9.sp,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                            group.sunIn?.let { sunIn ->
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ) {
-                                    Text(
-                                        text = "🌇日没 $sunIn",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 9.sp,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
+                                Text(
+                                    text = MoonUtils.formatMoonDisplay(moon),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                )
                             }
                             group.sunOut?.let { sunOut ->
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ) {
-                                    Text(
-                                        text = "🌅日の出 $sunOut",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 9.sp,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
+                                Text(
+                                    text = "🌅日の出 $sunOut",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                )
+                            }
+                            group.sunIn?.let { sunIn ->
+                                Text(
+                                    text = "🌇日没 $sunIn",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                )
                             }
                         }
                     }
                 }
+
+                val validResults = remember(group.results) { group.results.filter { it.index >= 0 } }
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    group.results.filter { it.index >= 0 }.forEach { result ->
-                        IndexChip(result = result)
+                    validResults.forEach { result ->
+                        IndexChip(
+                            result = result,
+                            chipPulseScaleProvider = chipPulseScaleProvider
+                        )
                     }
                 }
             }
@@ -910,53 +878,42 @@ private fun HourlyIndexList(groupedResults: List<FormattedGroupedResults>) {
 }
 
 @Composable
-private fun IndexChip(result: StarIndexResultEntity) {
+private fun IndexChip(
+    result: StarIndexResultEntity,
+    chipPulseScaleProvider: () -> Float
+) {
     val index = result.index.coerceIn(0, 4)
     val bgColor = StarIndexColors.getBackgroundColor(index)
     val textColor = StarIndexColors.getTextColor(index)
 
     val hourText = "${result.hour}時"
-
-    // 高指数(★3以上)の時のみパルスアニメーションを実行
     val shouldPulse = index >= 3
-    val pulseScaleState = if (shouldPulse) {
-        val infiniteTransition = rememberInfiniteTransition(label = "chipPulse")
-        infiniteTransition.animateFloat(
-            initialValue = 1f,
-            targetValue = 1.05f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "pulseScale"
-        )
-    } else {
-        null
-    }
 
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = bgColor,
-        contentColor = textColor,
-        modifier = Modifier.graphicsLayer {
-            val scale = pulseScaleState?.value ?: 1f
-            scaleX = scale
-            scaleY = scale
-        }
+    Box(
+        modifier = Modifier
+            .graphicsLayer {
+                if (shouldPulse) {
+                    val scale = chipPulseScaleProvider()
+                    scaleX = scale
+                    scaleY = scale
+                }
+            }
+            .background(color = bgColor, shape = RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-        ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = hourText,
                 style = MaterialTheme.typography.labelSmall,
+                color = textColor,
                 fontSize = 10.sp
             )
             Spacer(modifier = Modifier.height(1.dp))
             Text(
                 text = "★$index",
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = textColor,
                 fontSize = 12.sp
             )
         }
