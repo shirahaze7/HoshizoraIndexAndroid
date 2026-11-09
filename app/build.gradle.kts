@@ -103,7 +103,7 @@ dependencies {
 
     // Room (ローカルDB: AGP 8.5.2 互換バージョン 2.6.1 で固定)
     //noinspection GradleDependency
-    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-runtime:2.8.5")
     //noinspection GradleDependency
     implementation("androidx.room:room-ktx:2.6.1")
     //noinspection GradleDependency
